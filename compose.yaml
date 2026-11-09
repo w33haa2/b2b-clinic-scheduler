@@ -1,0 +1,124 @@
+# =============================================================================
+# Local development stack. Usage: docker compose up -d
+# See docs/docker.md for the full workflow.
+#
+# Host ports can be changed in .env: APP_PORT, VITE_PORT, FORWARD_DB_PORT,
+# FORWARD_REDIS_PORT, FORWARD_MAILPIT_PORT, FORWARD_MAILPIT_DASHBOARD_PORT.
+# =============================================================================
+
+# Shared by the PHP services (app, vite, queue, scheduler). Only "app" builds the
+# image; the others reuse it (building one tag from several services collides).
+x-app: &app
+    image: clinic-app:development
+    volumes:
+        - .:/var/www/html
+        - node_modules:/var/www/html/node_modules
+    # Only Docker plumbing lives here. Connection settings (DB_HOST=mysql, etc.)
+    # belong in .env: real env vars would beat phpunit.xml and point the test
+    # suite at the dev database. See docs/docker.md.
+    environment:
+        # public/hot says localhost:5173 (for the browser); PHP reaches Vite's
+        # SSR endpoint over the compose network instead.
+        INERTIA_SSR_HOT_URL: http://vite:5173
+    depends_on:
+        mysql:
+            condition: service_healthy
+        redis:
+            condition: service_healthy
+
+services:
+    app:
+        <<: *app
+        build:
+            context: .
+            target: development
+            args:
+                UID: ${UID:-1000}
+                GID: ${GID:-1000}
+
+    web:
+        image: nginx:1.28-alpine
+        ports:
+            - ${APP_PORT:-80}:80
+        volumes:
+            - .:/var/www/html:ro
+            - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+        depends_on:
+            - app
+
+    vite:
+        <<: *app
+        pull_policy: never
+        # The PHP-FPM base image stops containers with SIGQUIT; the script below
+        # traps SIGTERM to stop Vite and remove public/hot.
+        stop_signal: SIGTERM
+        init: true
+        command: docker/vite/dev.sh
+        ports:
+            - ${VITE_PORT:-5173}:5173
+        environment:
+            VITE_HMR_HOST: localhost
+            VITE_HMR_CLIENT_PORT: ${VITE_PORT:-5173}
+        depends_on: []
+
+    queue:
+        <<: *app
+        pull_policy: never
+        depends_on:
+            app:
+                condition: service_started
+        command: php artisan queue:listen --tries=1 --timeout=0
+
+    scheduler:
+        <<: *app
+        pull_policy: never
+        depends_on:
+            app:
+                condition: service_started
+        command: php artisan schedule:work
+
+    mysql:
+        image: mysql:8.4
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE:-clinic}
+            MYSQL_USER: ${DB_USERNAME:-clinic}
+            MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
+        ports:
+            - ${FORWARD_DB_PORT:-3306}:3306
+        volumes:
+            - mysql-data:/var/lib/mysql
+        healthcheck:
+            # Over TCP, so it only passes once first-run initialization is done
+            # (MySQL's temporary init server listens on the socket only).
+            test:
+                [
+                    CMD-SHELL,
+                    'mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent',
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+
+    redis:
+        image: redis:7-alpine
+        ports:
+            - ${FORWARD_REDIS_PORT:-6379}:6379
+        volumes:
+            - redis-data:/data
+        healthcheck:
+            test: [CMD, redis-cli, ping]
+            interval: 5s
+            timeout: 5s
+            retries: 10
+
+    mailpit:
+        image: axllent/mailpit:latest
+        ports:
+            - ${FORWARD_MAILPIT_PORT:-1025}:1025
+            - ${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025
+
+volumes:
+    node_modules:
+    mysql-data:
+    redis-data:

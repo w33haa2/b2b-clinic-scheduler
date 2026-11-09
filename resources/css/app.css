@@ -1,0 +1,511 @@
+@import 'tailwindcss';
+
+@import 'tw-animate-css';
+@import 'animate.css';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-sans:
+        var(--font-plus-jakarta-sans), 'Plus Jakarta Sans', ui-sans-serif,
+        system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-display: var(--font-fraunces), 'Fraunces', Georgia, ui-serif, serif;
+    --font-mono:
+        var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace,
+        SFMono-Regular, monospace;
+    --text-display: clamp(2.65rem, 5.6vw, 4.5rem);
+    --text-display--line-height: 1.04;
+    --text-display--letter-spacing: -0.03em;
+    --text-section: clamp(1.95rem, 3.8vw, 3.1rem);
+    --text-section--line-height: 1.1;
+    --text-section--letter-spacing: -0.025em;
+
+    --radius-lg: var(--radius);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-sm: calc(var(--radius) - 4px);
+
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+
+    --color-sidebar: var(--sidebar-background);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-gray-200, currentColor);
+    }
+}
+
+@layer base {
+    body,
+    html {
+        font-family: var(--font-sans);
+        font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        text-rendering: optimizeLegibility;
+    }
+
+    .font-display {
+        font-optical-sizing: auto;
+        font-variation-settings:
+            'SOFT' 30,
+            'WONK' 0;
+    }
+
+    .font-mono {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: 'zero';
+    }
+}
+
+:root {
+    --background: hsl(0 0% 100%);
+    --foreground: hsl(0 0% 3.9%);
+    --card: hsl(0 0% 100%);
+    --card-foreground: hsl(0 0% 3.9%);
+    --popover: hsl(0 0% 100%);
+    --popover-foreground: hsl(0 0% 3.9%);
+    --primary: hsl(0 0% 9%);
+    --primary-foreground: hsl(0 0% 98%);
+    --secondary: hsl(0 0% 92.1%);
+    --secondary-foreground: hsl(0 0% 9%);
+    --muted: hsl(0 0% 96.1%);
+    --muted-foreground: hsl(0 0% 45.1%);
+    --accent: hsl(0 0% 96.1%);
+    --accent-foreground: hsl(0 0% 9%);
+    --destructive: hsl(0 84.2% 60.2%);
+    --destructive-foreground: hsl(0 0% 98%);
+    --border: hsl(0 0% 92.8%);
+    --input: hsl(0 0% 89.8%);
+    --ring: hsl(0 0% 3.9%);
+    --chart-1: hsl(12 76% 61%);
+    --chart-2: hsl(173 58% 39%);
+    --chart-3: hsl(197 37% 24%);
+    --chart-4: hsl(43 74% 66%);
+    --chart-5: hsl(27 87% 67%);
+    --radius: 0.5rem;
+    --sidebar-background: hsl(0 0% 98%);
+    --sidebar-foreground: hsl(240 5.3% 26.1%);
+    --sidebar-primary: hsl(0 0% 10%);
+    --sidebar-primary-foreground: hsl(0 0% 98%);
+    --sidebar-accent: hsl(0 0% 94%);
+    --sidebar-accent-foreground: hsl(0 0% 30%);
+    --sidebar-border: hsl(0 0% 91%);
+    --sidebar-ring: hsl(217.2 91.2% 59.8%);
+    --sidebar: hsl(0 0% 98%);
+}
+
+.dark {
+    --background: hsl(0 0% 3.9%);
+    --foreground: hsl(0 0% 98%);
+    --card: hsl(0 0% 3.9%);
+    --card-foreground: hsl(0 0% 98%);
+    --popover: hsl(0 0% 3.9%);
+    --popover-foreground: hsl(0 0% 98%);
+    --primary: hsl(0 0% 98%);
+    --primary-foreground: hsl(0 0% 9%);
+    --secondary: hsl(0 0% 14.9%);
+    --secondary-foreground: hsl(0 0% 98%);
+    --muted: hsl(0 0% 16.08%);
+    --muted-foreground: hsl(0 0% 63.9%);
+    --accent: hsl(0 0% 14.9%);
+    --accent-foreground: hsl(0 0% 98%);
+    --destructive: hsl(0 84% 60%);
+    --destructive-foreground: hsl(0 0% 98%);
+    --border: hsl(0 0% 14.9%);
+    --input: hsl(0 0% 14.9%);
+    --ring: hsl(0 0% 83.1%);
+    --chart-1: hsl(220 70% 50%);
+    --chart-2: hsl(160 60% 45%);
+    --chart-3: hsl(30 80% 55%);
+    --chart-4: hsl(280 65% 60%);
+    --chart-5: hsl(340 75% 55%);
+    --sidebar-background: hsl(0 0% 7%);
+    --sidebar-foreground: hsl(0 0% 95.9%);
+    --sidebar-primary: hsl(360, 100%, 100%);
+    --sidebar-primary-foreground: hsl(0 0% 100%);
+    --sidebar-accent: hsl(0 0% 15.9%);
+    --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+    --sidebar-border: hsl(0 0% 15.9%);
+    --sidebar-ring: hsl(217.2 91.2% 59.8%);
+    --sidebar: hsl(240 5.9% 10%);
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+}
+
+/*
+  Schedule calendar (FullCalendar), restyled with the shadcn tokens so it
+  follows light/dark mode. Staff colours: `.member-color-N` sets
+  --member-color, used for the event tint, left border and legend.
+*/
+:root {
+    --member-color-0: oklch(70.4% 0.14 182.5);
+    --member-color-1: oklch(68.5% 0.169 237.3);
+    --member-color-2: oklch(60.6% 0.25 292.7);
+    --member-color-3: oklch(76.9% 0.188 70.1);
+    --member-color-4: oklch(64.5% 0.246 16.4);
+    --member-color-5: oklch(69.6% 0.17 162.5);
+    --member-color-6: oklch(58.5% 0.233 277.1);
+    --member-color-7: oklch(70.5% 0.213 47.6);
+}
+
+.member-color-0 {
+    --member-color: var(--member-color-0);
+}
+.member-color-1 {
+    --member-color: var(--member-color-1);
+}
+.member-color-2 {
+    --member-color: var(--member-color-2);
+}
+.member-color-3 {
+    --member-color: var(--member-color-3);
+}
+.member-color-4 {
+    --member-color: var(--member-color-4);
+}
+.member-color-5 {
+    --member-color: var(--member-color-5);
+}
+.member-color-6 {
+    --member-color: var(--member-color-6);
+}
+.member-color-7 {
+    --member-color: var(--member-color-7);
+}
+
+.session-calendar {
+    --fc-border-color: var(--border);
+    --fc-page-bg-color: var(--card);
+    --fc-neutral-bg-color: var(--muted);
+    --fc-list-event-hover-bg-color: var(--accent);
+    --fc-today-bg-color: color-mix(
+        in oklab,
+        var(--member-color-0) 7%,
+        transparent
+    );
+    --fc-now-indicator-color: var(--member-color-4);
+    --fc-highlight-color: color-mix(
+        in oklab,
+        var(--member-color-0) 18%,
+        transparent
+    );
+    --fc-event-border-color: transparent;
+    font-size: 0.8125rem;
+}
+
+.session-calendar .fc-col-header-cell-cushion,
+.session-calendar .fc-daygrid-day-number,
+.session-calendar .fc-list-day-text,
+.session-calendar .fc-list-day-side-text {
+    color: var(--foreground);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.session-calendar .fc-timegrid-slot-label-cushion,
+.session-calendar .fc-list-event-time {
+    color: var(--muted-foreground);
+}
+
+.session-calendar .fc-timegrid-slot {
+    height: 2.25rem;
+}
+
+.session-calendar .fc-scrollgrid {
+    border-radius: calc(var(--radius) + 2px);
+    overflow: hidden;
+}
+
+/* Google Calendar-style event: tinted block with a coloured left edge. */
+.session-calendar .fc-timegrid-event,
+.session-calendar .fc-daygrid-block-event {
+    background: color-mix(in oklab, var(--member-color) 22%, var(--card));
+    border: 0;
+    border-left: 3px solid var(--member-color);
+    border-radius: calc(var(--radius) - 2px);
+    color: var(--foreground);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+    transition:
+        transform 120ms ease,
+        box-shadow 120ms ease;
+}
+
+.session-calendar .fc-timegrid-event .fc-event-main,
+.session-calendar .fc-daygrid-event .fc-event-main {
+    color: inherit;
+}
+
+.session-calendar .fc-timegrid-event:hover,
+.session-calendar .fc-daygrid-event:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgb(0 0 0 / 0.12);
+    z-index: 5;
+}
+
+.session-calendar .fc-daygrid-dot-event,
+.session-calendar .fc-daygrid-event {
+    color: var(--foreground);
+}
+
+.session-calendar .fc-list-event-dot {
+    border-color: var(--member-color);
+}
+
+.session-calendar .session-done {
+    opacity: 0.65;
+}
+
+.session-calendar .session-cancelled {
+    opacity: 0.45;
+    text-decoration: line-through;
+    background: repeating-linear-gradient(
+        -45deg,
+        color-mix(in oklab, var(--member-color) 12%, var(--card)),
+        color-mix(in oklab, var(--member-color) 12%, var(--card)) 6px,
+        var(--card) 6px,
+        var(--card) 12px
+    );
+}
+
+.session-calendar .session-ongoing {
+    box-shadow: 0 0 0 2px var(--member-color);
+}
+
+/*
+  Day timeline (daily session panels and wizard): patients planned by drag
+  and drop. Teal blocks are patients; amber ones were changed for that day
+  only; green ones are paid. Striped grey is time taken by other sessions.
+*/
+.day-timeline .fc-timegrid-slot {
+    height: 1.4rem;
+}
+
+/* Hour lines stronger than the 15-minute ones. */
+.day-timeline .fc-timegrid-slot-minor {
+    border-top-style: dotted;
+}
+
+.day-timeline .fc-timegrid-event.timeline-block {
+    --member-color: var(--color-teal-600);
+    cursor: grab;
+}
+
+.day-timeline .fc-timegrid-event.timeline-changed {
+    --member-color: var(--color-amber-500);
+}
+
+.day-timeline .fc-timegrid-event.timeline-paid {
+    --member-color: var(--color-emerald-600);
+}
+
+.day-timeline .fc-timegrid-event.timeline-selected {
+    box-shadow: 0 0 0 2px var(--ring);
+    z-index: 4;
+}
+
+.day-timeline .fc-bg-event.timeline-busy {
+    background: repeating-linear-gradient(
+        -45deg,
+        var(--muted),
+        var(--muted) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+    opacity: 1;
+}
+
+/* Cards that can be dragged onto a day timeline. */
+[data-drag-id] {
+    cursor: grab;
+}
+
+/* A patient plotted into a daily session: lighter, with a dotted edge. */
+.session-calendar .fc-timegrid-event.daily-slot,
+.session-calendar .fc-daygrid-block-event.daily-slot {
+    background: color-mix(in oklab, var(--member-color) 12%, var(--card));
+    border-left: 3px dotted var(--member-color);
+    box-shadow: none;
+}
+
+/* New events fade in as they arrive. */
+.session-calendar .fc-event {
+    animation: fadeIn 0.35s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .session-calendar .fc-event {
+        animation: none;
+    }
+}
+
+/* Printing an invoice prints only the invoice. */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+
+    .printable-invoice,
+    .printable-invoice * {
+        visibility: visible;
+    }
+
+    .printable-invoice {
+        position: absolute;
+        inset: 0;
+    }
+}
+
+/* Theme switch: a short cross-fade via the View Transitions API (ThemeToggle.vue). */
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation-duration: 0.35s;
+}
+
+/*
+  Landing page (PublicLayout): a warm near-white with one deep-teal accent,
+  and a layered warm dark mode. It redefines the shadcn tokens inside
+  `.landing`, so buttons and inputs there pick the palette up automatically.
+*/
+.landing {
+    --background: oklch(0.985 0.004 85);
+    --foreground: oklch(0.22 0.01 70);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.22 0.01 70);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.22 0.01 70);
+    --muted: oklch(0.96 0.006 85);
+    --muted-foreground: oklch(0.5 0.012 70);
+    --secondary: oklch(0.955 0.007 85);
+    --secondary-foreground: oklch(0.22 0.01 70);
+    --accent: oklch(0.95 0.03 185);
+    --accent-foreground: oklch(0.32 0.06 185);
+    --primary: oklch(0.5 0.09 185);
+    --primary-foreground: oklch(0.99 0.003 85);
+    --border: oklch(0.91 0.008 85);
+    --input: oklch(0.88 0.01 85);
+    --ring: oklch(0.5 0.09 185);
+    --surface-sunken: oklch(0.965 0.006 85);
+
+    background-color: var(--background);
+    color: var(--foreground);
+}
+
+.dark .landing {
+    --background: oklch(0.17 0.006 70);
+    --foreground: oklch(0.95 0.006 85);
+    --card: oklch(0.21 0.007 70);
+    --card-foreground: oklch(0.95 0.006 85);
+    --popover: oklch(0.21 0.007 70);
+    --popover-foreground: oklch(0.95 0.006 85);
+    --muted: oklch(0.25 0.008 70);
+    --muted-foreground: oklch(0.7 0.01 80);
+    --secondary: oklch(0.25 0.008 70);
+    --secondary-foreground: oklch(0.95 0.006 85);
+    --accent: oklch(0.3 0.05 185);
+    --accent-foreground: oklch(0.88 0.06 180);
+    --primary: oklch(0.75 0.09 180);
+    --primary-foreground: oklch(0.17 0.02 185);
+    --border: oklch(1 0 0 / 0.09);
+    --input: oklch(1 0 0 / 0.14);
+    --ring: oklch(0.75 0.09 180);
+    --surface-sunken: oklch(0.15 0.006 70);
+}
+
+/* One quiet entrance per section: 12px rise, fast-out long-settle easing. */
+@keyframes revealUp {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 12px, 0);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+.animate__revealUp {
+    animation-name: revealUp;
+}
+
+.landing .animate__animated {
+    --animate-duration: 0.6s;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Architectural hairline grid backdrop for the landing hero & stages. */
+.landing-grid {
+    background-image:
+        linear-gradient(to right, var(--border) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+    background-size: 4rem 4rem;
+}
+
+.landing-dots {
+    background-image: radial-gradient(
+        color-mix(in oklab, var(--foreground) 14%, transparent) 1px,
+        transparent 1px
+    );
+    background-size: 1.25rem 1.25rem;
+}

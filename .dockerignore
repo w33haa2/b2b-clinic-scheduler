@@ -1,0 +1,47 @@
+# VCS, editor and agent tooling
+.git
+.github
+.agents
+.claude
+.zed
+.idea
+.vscode
+AGENTS.md
+CLAUDE.md
+boost.json
+
+# Docker / docs (not needed inside images)
+Dockerfile
+compose*.yaml
+docs
+
+# Environment files: production config is injected at runtime
+.env
+.env.*
+
+# Dependencies and build output are rebuilt inside the image
+node_modules
+vendor
+public/build
+public/hot
+public/storage
+bootstrap/ssr
+bootstrap/cache/*.php
+resources/js/actions
+resources/js/routes
+resources/js/wayfinder
+
+# Local runtime data
+database/*.sqlite
+storage/app/private/*
+storage/app/public/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/logs/*
+storage/pail
+
+# Tests
+tests
+phpunit.xml
+.phpunit.cache

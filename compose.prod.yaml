@@ -1,0 +1,138 @@
+# =============================================================================
+# Production stack.
+#
+#   cp .env.production.example .env.production   # then fill in secrets
+#   docker compose -f compose.prod.yaml --env-file .env.production up -d --build
+#
+# See docs/docker.md for details.
+# =============================================================================
+
+x-build-args: &build-args
+    VITE_APP_NAME: ${VITE_APP_NAME:-Clinic App}
+
+# Shared by app, queue and scheduler. Only "app" builds the image; the
+# others reuse it (building one tag from several services collides).
+x-app: &app
+    image: ${APP_IMAGE:-clinic-app}:${APP_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env.production
+    volumes:
+        - storage:/var/www/html/storage
+    depends_on:
+        mysql:
+            condition: service_healthy
+        redis:
+            condition: service_healthy
+        ssr:
+            condition: service_healthy
+
+services:
+    app:
+        <<: *app
+        build:
+            context: .
+            target: production
+            args: *build-args
+        environment:
+            RUN_MIGRATIONS: 'true'
+
+    web:
+        build:
+            context: .
+            target: web
+            args: *build-args
+        image: ${APP_IMAGE:-clinic-app}-web:${APP_TAG:-latest}
+        restart: unless-stopped
+        ports:
+            - ${APP_PORT:-80}:80
+        volumes:
+            - storage:/var/www/html/storage:ro
+        depends_on:
+            - app
+        healthcheck:
+            test: [CMD, wget, -qO-, http://127.0.0.1/up]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+
+    # Pre-renders Inertia pages so crawlers and first visits get real HTML.
+    ssr:
+        build:
+            context: .
+            target: ssr
+            args: *build-args
+        image: ${APP_IMAGE:-clinic-app}-ssr:${APP_TAG:-latest}
+        restart: unless-stopped
+        healthcheck:
+            test:
+                [
+                    CMD,
+                    node,
+                    -e,
+                    "fetch('http://127.0.0.1:13714/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+                ]
+            interval: 15s
+            timeout: 5s
+            retries: 5
+
+    queue:
+        <<: *app
+        pull_policy: never
+        depends_on:
+            app:
+                condition: service_started
+        command: php artisan queue:work --tries=3 --max-time=3600
+        # The worker finishes its current job on SIGQUIT; give it time to do so.
+        stop_grace_period: 60s
+
+    scheduler:
+        <<: *app
+        pull_policy: never
+        depends_on:
+            app:
+                condition: service_started
+        command: php artisan schedule:work
+
+    mysql:
+        image: mysql:8.4
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE}
+            MYSQL_USER: ${DB_USERNAME}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+            MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+        volumes:
+            - mysql-data:/var/lib/mysql
+        healthcheck:
+            # Over TCP, so it only passes once first-run initialization is done.
+            test:
+                [
+                    CMD-SHELL,
+                    'mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent',
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 20
+
+    redis:
+        image: redis:7-alpine
+        restart: unless-stopped
+        command: redis-server --requirepass ${REDIS_PASSWORD}
+        volumes:
+            - redis-data:/data
+        healthcheck:
+            test:
+                [
+                    CMD-SHELL,
+                    'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping',
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        environment:
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+volumes:
+    storage:
+    mysql-data:
+    redis-data:
