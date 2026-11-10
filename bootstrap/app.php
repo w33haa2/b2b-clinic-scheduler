@@ -22,6 +22,19 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
+        /*
+         * Behind a managed load balancer (Render, Cloud, any PaaS) the TLS
+         * ends at the proxy, so without this Laravel builds http:// URLs,
+         * sees every request as insecure, and reads the proxy's address as
+         * the client IP — which would put every visitor in the same rate
+         * limit bucket and write the wrong IP into the activity log.
+         *
+         * The proxy's address is not known ahead of time, so all proxies are
+         * trusted. That is safe only because nothing reaches PHP without
+         * passing through that proxy first.
+         */
+        $middleware->trustProxies(at: '*');
+
         $middleware->statefulApi();
 
         $middleware->alias([

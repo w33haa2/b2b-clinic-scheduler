@@ -8,6 +8,9 @@
 #   production   Hardened PHP-FPM image with vendor + compiled assets baked in
 #   web          Nginx image serving public/ and proxying PHP to the app service
 #   ssr          Node server that pre-renders Inertia pages (SEO, first paint)
+#   render       production + Nginx in one container, for hosts that run a
+#                single image per service. The last stage, so it is what a
+#                plain `docker build .` produces.
 #
 # See docs/docker.md for how each target is used.
 # =============================================================================
@@ -24,8 +27,10 @@ FROM php:${PHP_VERSION}-fpm-trixie AS base
 
 COPY --from=mlocati/php-extension-installer:2 /usr/bin/install-php-extensions /usr/local/bin/
 
-# OPcache is built into PHP 8.5, so it is not listed here.
-RUN install-php-extensions bcmath intl pcntl pdo_mysql redis zip
+# OPcache is built into PHP 8.5, so it is not listed here. Both database
+# drivers are installed: MySQL for the Docker stack, PostgreSQL for hosted
+# databases such as Neon.
+RUN install-php-extensions bcmath intl pcntl pdo_mysql pdo_pgsql redis zip
 
 COPY docker/php/conf.d/app.ini "$PHP_INI_DIR/conf.d/zz-app.ini"
 
@@ -156,3 +161,44 @@ USER node
 EXPOSE 13714
 
 CMD ["node", "bootstrap/ssr/app.js"]
+
+# -----------------------------------------------------------------------------
+# render: the production image plus Nginx, in one container.
+#
+# compose.prod.yaml splits Nginx and PHP-FPM into two services that talk over
+# the Docker network. Platforms that run one image per service (Render, Fly,
+# Cloud Run) cannot do that, so this target runs both under supervisord and
+# listens on $PORT.
+#
+# The same image backs every service: the web service runs supervisord, and
+# worker services override the command (`php artisan queue:work`).
+# -----------------------------------------------------------------------------
+FROM production AS render
+
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nginx supervisor gettext-base \
+    && rm -rf /var/lib/apt/lists/* \
+    # Nginx runs unprivileged like everything else here, so every path it
+    # writes to has to belong to www-data.
+    && mkdir -p /var/lib/nginx/body /var/lib/nginx/proxy /var/lib/nginx/fastcgi \
+        /var/lib/nginx/uwsgi /var/lib/nginx/scgi /var/log/nginx /etc/nginx/conf.d \
+    && chown -R www-data:www-data /var/lib/nginx /var/log/nginx /etc/nginx/conf.d
+
+COPY docker/render/nginx.conf.template /etc/nginx/nginx.conf.template
+COPY docker/render/supervisord.conf /etc/supervisor/supervisord.conf
+COPY docker/render/entrypoint.sh /usr/local/bin/render-entrypoint
+
+# Render sets PORT; this is the default it uses for Docker services.
+ENV PORT=10000 \
+    RUN_MIGRATIONS=false \
+    RUN_QUEUE=false \
+    RUN_SCHEDULER=false
+
+EXPOSE 10000
+
+USER www-data
+
+ENTRYPOINT ["render-entrypoint"]
+CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]

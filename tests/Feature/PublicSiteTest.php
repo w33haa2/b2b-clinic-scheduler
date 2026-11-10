@@ -32,7 +32,7 @@ test('robots.txt keeps crawlers out of the app and points to the sitemap in prod
     $this->get('/robots.txt')
         ->assertOk()
         ->assertHeader('Content-Type', 'text/plain; charset=UTF-8')
-        ->assertSee("Disallow: /admin\nDisallow: /api\nDisallow: /docs", false)
+        ->assertSee("Disallow: /admin\nDisallow: /api\nDisallow: /docs\nDisallow: /patient-form", false)
         ->assertSee('Sitemap: '.url('/sitemap.xml'), false);
 });
 

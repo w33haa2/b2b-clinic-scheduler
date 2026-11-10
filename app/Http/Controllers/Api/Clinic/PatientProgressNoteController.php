@@ -211,10 +211,10 @@ class PatientProgressNoteController extends Controller
             ->when($filters['from'] ?? null, fn ($query, string $from) => $query->whereDate('recorded_on', '>=', $from))
             ->when($filters['to'] ?? null, fn ($query, string $to) => $query->whereDate('recorded_on', '<=', $to))
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn (Builder $query) => $query
-                ->where('summary', 'like', "%{$search}%")
+                ->whereLike('summary', "%{$search}%")
                 ->orWhereHas('patient', fn (Builder $query) => $query
-                    ->where('first_name', 'like', "%{$search}%")
-                    ->orWhere('last_name', 'like', "%{$search}%"))))
+                    ->whereLike('first_name', "%{$search}%")
+                    ->orWhereLike('last_name', "%{$search}%"))))
             ->with(['patient', 'clinicUser.user', 'metrics'])
             ->orderByDesc('recorded_on')
             ->orderByDesc('id')

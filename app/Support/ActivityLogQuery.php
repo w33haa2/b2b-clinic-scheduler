@@ -26,11 +26,11 @@ class ActivityLogQuery
             ->when($filters['from'] ?? null, fn (Builder $query, string $from) => $query->where('created_at', '>=', Date::parse($from)->utc()))
             ->when($filters['to'] ?? null, fn (Builder $query, string $to) => $query->where('created_at', '<', Date::parse($to)->utc()))
             ->when($filters['search'] ?? null, fn (Builder $query, string $search) => $query->where(fn (Builder $query) => $query
-                ->where('subject_label', 'like', "%{$search}%")
-                ->orWhere('action', 'like', "%{$search}%")
+                ->whereLike('subject_label', "%{$search}%")
+                ->orWhereLike('action', "%{$search}%")
                 ->orWhereHas('user', fn (Builder $query) => $query
-                    ->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%"))))
+                    ->whereLike('name', "%{$search}%")
+                    ->orWhereLike('email', "%{$search}%"))))
             ->with('user')
             ->orderByDesc('created_at')
             ->orderByDesc('id');

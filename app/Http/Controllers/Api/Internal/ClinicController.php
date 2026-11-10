@@ -25,7 +25,7 @@ class ClinicController extends Controller
         ]);
 
         $clinics = Clinic::query()
-            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where('name', 'like', "%{$search}%"))
+            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->whereLike('name', "%{$search}%"))
             ->orderBy('name')
             ->orderBy('id')
             ->paginate($filters['per_page'] ?? 25);

@@ -16,7 +16,10 @@ return [
     */
 
     'ssr' => [
-        'enabled' => true,
+        // Turn this off where no SSR server is deployed (a single-container
+        // host, for example), so Laravel renders in the browser instead of
+        // attempting a connection on every first page load.
+        'enabled' => env('INERTIA_SSR_ENABLED', true),
         // Production: the "ssr" container (INERTIA_SSR_URL=http://ssr:13714).
         'url' => env('INERTIA_SSR_URL', 'http://127.0.0.1:13714'),
         'hot_url' => env('INERTIA_SSR_HOT_URL'),

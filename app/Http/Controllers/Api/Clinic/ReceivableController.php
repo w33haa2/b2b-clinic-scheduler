@@ -57,7 +57,10 @@ class ReceivableController extends Controller
                 'sessionLineItem.sessionMember.payment',
                 'sessionLineItem.sessionMember.clinicSession',
             ])
-            ->orderBy('settled_at')
+            // Still outstanding first. Written out rather than ordering by
+            // the nullable settled_at, because MySQL sorts NULLs first and
+            // PostgreSQL sorts them last.
+            ->orderByRaw('settled_at is null desc')
             ->orderByDesc('id')
             ->paginate($filters['per_page'] ?? 25);
 

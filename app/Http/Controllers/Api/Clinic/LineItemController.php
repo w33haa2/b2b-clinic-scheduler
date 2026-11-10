@@ -25,8 +25,8 @@ class LineItemController extends Controller
 
         $lineItems = $clinic->lineItems()
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
-                ->where('item_code', 'like', "%{$search}%")
-                ->orWhere('name', 'like', "%{$search}%")))
+                ->whereLike('item_code', "%{$search}%")
+                ->orWhereLike('name', "%{$search}%")))
             ->orderBy('item_code')
             ->paginate($filters['per_page'] ?? 25);
 

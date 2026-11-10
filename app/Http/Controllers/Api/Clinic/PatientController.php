@@ -31,10 +31,10 @@ class PatientController extends Controller
 
         $patients = $clinic->patients()
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
-                ->where('first_name', 'like', "%{$search}%")
-                ->orWhere('last_name', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%")
-                ->orWhere('phone', 'like', "%{$search}%")))
+                ->whereLike('first_name', "%{$search}%")
+                ->orWhereLike('last_name', "%{$search}%")
+                ->orWhereLike('email', "%{$search}%")
+                ->orWhereLike('phone', "%{$search}%")))
             ->when($filters['with_fields'] ?? false, fn ($query) => $query->with('patientFieldValues.patientFormField'))
             ->orderBy('last_name')
             ->orderBy('first_name')

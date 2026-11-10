@@ -37,10 +37,14 @@ class DiscountController extends Controller
             ->when(($filters['scope'] ?? null) === 'CLINIC_WIDE', fn ($query) => $query->whereNull('clinic_user_id'))
             ->when(($filters['scope'] ?? null) === 'PERSONAL', fn ($query) => $query->whereNotNull('clinic_user_id'))
             ->when(isset($filters['active']), fn ($query) => $query->where('is_active', $filters['active']))
-            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where('name', 'like', "%{$search}%"))
+            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->whereLike('name', "%{$search}%"))
             ->with('clinicUser.user')
-            ->orderBy('clinic_user_id')
+            // Clinic-wide first, then the member's own. Written out rather
+            // than ordering by the nullable clinic_user_id, because MySQL
+            // sorts NULLs first and PostgreSQL sorts them last.
+            ->orderByRaw('clinic_user_id is null desc')
             ->orderBy('name')
+            ->orderBy('id')
             ->paginate($filters['per_page'] ?? 25);
 
         return DiscountResource::collection($discounts);

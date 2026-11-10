@@ -113,13 +113,18 @@ class PublicSiteController extends Controller
     }
 
     /**
-     * robots.txt: keep crawlers out of the app, the API and the API docs.
-     * Outside production everything is disallowed so staging is never indexed.
+     * robots.txt: keep crawlers out of the app, the API, the API docs and the
+     * patient intake links. Outside production everything is disallowed so
+     * staging is never indexed.
+     *
+     * The intake page also asks not to be indexed through a meta tag, but
+     * that tag is rendered by the browser. This one is served by the server,
+     * so it holds whether or not SSR is deployed.
      */
     public function robots(): HttpResponse
     {
         $lines = app()->isProduction()
-            ? ['User-agent: *', 'Disallow: /admin', 'Disallow: /api', 'Disallow: /docs', '', 'Sitemap: '.url('/sitemap.xml')]
+            ? ['User-agent: *', 'Disallow: /admin', 'Disallow: /api', 'Disallow: /docs', 'Disallow: /patient-form', '', 'Sitemap: '.url('/sitemap.xml')]
             : ['User-agent: *', 'Disallow: /'];
 
         return response(implode("\n", $lines)."\n", 200, ['Content-Type' => 'text/plain; charset=UTF-8']);

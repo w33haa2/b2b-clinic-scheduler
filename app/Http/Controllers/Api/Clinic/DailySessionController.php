@@ -40,7 +40,7 @@ class DailySessionController extends Controller
             ->when($request->boolean('active'), fn ($query) => $query->where(fn ($query) => $query
                 ->whereNull('ends_on')
                 ->orWhereDate('ends_on', '>=', $today)))
-            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where('name', 'like', "%{$search}%"))
+            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->whereLike('name', "%{$search}%"))
             ->orderBy('name')
             ->orderBy('id')
             ->paginate($filters['per_page'] ?? 25);

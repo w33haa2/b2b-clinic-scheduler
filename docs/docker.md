@@ -288,9 +288,90 @@ On the server, set the same `APP_IMAGE` / `APP_TAG` and run `up -d` without
 - **TLS**: the `web` container listens on plain HTTP :80. Put it behind a
   TLS-terminating proxy or load balancer (Caddy, Traefik, a cloud LB). Keep
   `SESSION_SECURE_COOKIE=true` and set `APP_URL` to the `https://` URL.
-  Laravel will also need trusted proxies configured
-  (`$middleware->trustProxies(...)` in `bootstrap/app.php`).
+  Proxies are already trusted (`$middleware->trustProxies(at: '*')` in
+  `bootstrap/app.php`), so Laravel reads the real client IP and scheme.
 - **Backups** of the `mysql-data` volume (e.g. a scheduled `mysqldump`).
+
+---
+
+## Deploying to Render
+
+Render runs one image per service, so the Nginx/PHP-FPM split of
+`compose.prod.yaml` does not translate. The **`render`** image target runs both
+under supervisord and listens on `$PORT`. It is the last stage in the
+`Dockerfile`, so Render builds it without being told which target to use.
+
+`render.yaml` is a Blueprint describing three services, all from that one
+image:
+
+| Service            | Type   | Command                       |
+| ------------------ | ------ | ----------------------------- |
+| `clinic-app`       | web    | supervisord (Nginx + PHP-FPM) |
+| `clinic-queue`     | worker | `php artisan queue:work`      |
+| `clinic-scheduler` | worker | `php artisan schedule:work`   |
+
+To start on a single service, delete the two workers and set `RUN_QUEUE=true`
+and `RUN_SCHEDULER=true` on the web service; supervisord will run all four
+processes. Give the scheduler its own service before scaling the web service
+past one instance, or every scheduled command runs once per instance.
+
+### PostgreSQL instead of MySQL
+
+The hosted database (Neon, Render Postgres, Supabase) is PostgreSQL, so
+`DB_CONNECTION=pgsql`. Both PDO drivers are in the image. Two differences bit
+the application code and are now handled, but they are worth knowing when
+writing new queries:
+
+- **`LIKE` is case-sensitive in PostgreSQL** and case-insensitive in MySQL.
+  Every search in the app uses `whereLike()` / `orWhereLike()`, which Laravel
+  compiles to `ILIKE` on PostgreSQL and `LIKE` on MySQL. Do not write
+  `where(..., 'like', ...)` by hand.
+- **NULLs sort first in MySQL and last in PostgreSQL.** Ordering by a nullable
+  column therefore groups rows differently on each. Where the NULL group has
+  to come first, the order is written out: `orderByRaw('settled_at is null
+  desc')`. The same trick is used for `clinic_user_id` on discounts and
+  `start_time` on daily sessions.
+
+The test suite runs on SQLite by default. Run it against PostgreSQL before
+deploying a schema or query change:
+
+```bash
+docker run -d --name pg --network clinic-app_default \
+    -e POSTGRES_PASSWORD=secret -e POSTGRES_USER=clinic -e POSTGRES_DB=clinic postgres:17-alpine
+
+docker compose exec -e DB_CONNECTION=pgsql -e DB_HOST=pg -e DB_PORT=5432 \
+    -e DB_DATABASE=clinic -e DB_USERNAME=clinic -e DB_PASSWORD=secret \
+    app vendor/bin/pest --compact
+```
+
+### Neon
+
+- Use the **pooled** host (the one containing `-pooler`). Each PHP-FPM worker
+  holds its own connection, and the pooler is what keeps that inside Neon's
+  connection limit.
+- `DB_SSLMODE=require`; Neon refuses plaintext.
+- A Neon instance that has scaled to zero takes a few seconds to wake, so the
+  first request after an idle period is slow. Paid plans can disable that.
+
+### What is different from the Compose production stack
+
+- **No Redis.** Cache, sessions and the queue run on PostgreSQL
+  (`CACHE_STORE`, `SESSION_DRIVER`, `QUEUE_CONNECTION` = `database`). Add a
+  Render Key Value instance and switch them to `redis` when the queue warrants
+  it.
+- **No SSR service.** `INERTIA_SSR_ENABLED=false`, so pages render in the
+  browser. The landing page's SEO tags are unaffected — they are rendered by
+  the server from `PublicSiteController::home()`, not by `<Head>`. Deploy the
+  `ssr` target as a private service and set `INERTIA_SSR_ENABLED=true` with
+  `INERTIA_SSR_URL=http://<service>:13714` to turn it back on.
+- **No persistent disk.** Nothing durable is written to `storage/`: uploads to
+  the patient form importer are parsed in memory and discarded, PDFs are
+  generated per request, and logs go to stderr. Sessions and cache are in the
+  database. A restart loses nothing.
+- **Migrations run on deploy**, from the web service's entrypoint
+  (`RUN_MIGRATIONS=true`). It uses `migrate --force --isolated`, which takes a
+  cache lock so concurrent deploys and multiple instances cannot race. That
+  lock needs `CACHE_STORE=database` or `redis` — not `array` or `file`.
 
 ---
 

@@ -160,7 +160,12 @@ test('an enrolled patient joins the days that have not ended, not past ones', fu
     $this->postJson(route('clinic.daily-sessions.patients.store', [$worker->clinic_id, $dailySession]), ['patient_id' => $patient->id])
         ->assertCreated();
 
-    $days = ClinicSession::query()->whereHas('sessionMembers', fn ($query) => $query->where('patient_id', $patient->id))->pluck('occurs_on');
+    // Ordered explicitly: an unordered query has no guaranteed order, and
+    // MySQL and PostgreSQL do not agree on what it happens to be.
+    $days = ClinicSession::query()
+        ->whereHas('sessionMembers', fn ($query) => $query->where('patient_id', $patient->id))
+        ->orderBy('occurs_on')
+        ->pluck('occurs_on');
 
     expect($days->first()->toDateString())->toBe('2026-11-03')
         ->and(Payment::query()->where('patient_id', $patient->id)->count())->toBe($days->count());

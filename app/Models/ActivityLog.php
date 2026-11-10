@@ -93,7 +93,7 @@ class ActivityLog extends Model
     {
         $query->where(function (Builder $query) use ($category): void {
             foreach ($category->prefixes() as $prefix) {
-                $query->orWhere('action', 'like', "{$prefix}.%");
+                $query->orWhereLike('action', "{$prefix}.%");
             }
         });
     }

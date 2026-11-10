@@ -45,8 +45,8 @@ class PaymentController extends Controller
         $base = fn (): HasMany => $clinic->payments()
             ->when($filters['patient_id'] ?? null, fn ($query, int|string $id) => $query->where('patient_id', $id))
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->whereHas('patient', fn ($query) => $query
-                ->where('first_name', 'like', "%{$search}%")
-                ->orWhere('last_name', 'like', "%{$search}%")))
+                ->whereLike('first_name', "%{$search}%")
+                ->orWhereLike('last_name', "%{$search}%")))
             ->whereHas('clinicSession', fn (Builder $query) => $query
                 ->when($filters['daily_session_id'] ?? null, fn ($query, int|string $id) => $query->where('daily_session_id', $id))
                 ->when($filters['clinic_user_id'] ?? null, fn ($query, int|string $id) => $query->where('clinic_user_id', $id))

@@ -1,0 +1,91 @@
+# Nginx for the single-container "render" image. The entrypoint substitutes
+# ${PORT} and writes this to /tmp/nginx.conf.
+#
+# Everything is unprivileged: no `user` directive (only root may set it), and
+# every path Nginx writes to lives somewhere www-data owns. Logs go to the
+# container's stdout/stderr, which is where a PaaS reads them from.
+
+worker_processes auto;
+pid /tmp/nginx.pid;
+error_log /dev/stderr warn;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    access_log /dev/stdout;
+
+    client_body_temp_path /var/lib/nginx/body;
+    proxy_temp_path /var/lib/nginx/proxy;
+    fastcgi_temp_path /var/lib/nginx/fastcgi;
+    uwsgi_temp_path /var/lib/nginx/uwsgi;
+    scgi_temp_path /var/lib/nginx/scgi;
+
+    sendfile on;
+    tcp_nopush on;
+    keepalive_timeout 65;
+    server_tokens off;
+
+    # The platform's load balancer may hold a request for a while.
+    fastcgi_read_timeout 60s;
+
+    server {
+        listen ${PORT};
+        server_name _;
+        root /var/www/html/public;
+        index index.php;
+        charset utf-8;
+
+        client_max_body_size 20M;
+
+        gzip on;
+        gzip_vary on;
+        gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+
+        location / {
+            try_files $uri $uri/ /index.php?$query_string;
+        }
+
+        # Vite assets are content-hashed, so they can be cached forever.
+        location /build/ {
+            expires max;
+            add_header Cache-Control "public, immutable";
+            try_files $uri =404;
+        }
+
+        location = /favicon.ico { access_log off; log_not_found off; }
+
+        # robots.txt is a route, not a file (it changes by environment), so it
+        # has to reach PHP. Without the fallback Nginx looks for a file that is
+        # not there and answers 404, which would let crawlers index /admin.
+        location = /robots.txt {
+            access_log off;
+            try_files $uri /index.php?$query_string;
+        }
+
+        error_page 404 /index.php;
+
+        location ~ ^/index\.php(/|$) {
+            # PHP-FPM is in this container, not across the network.
+            fastcgi_pass 127.0.0.1:9000;
+            fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+            # Absolute: this config is generated into /tmp, and a relative
+            # include would be looked for next to it.
+            include /etc/nginx/fastcgi_params;
+            fastcgi_hide_header X-Powered-By;
+            fastcgi_buffers 16 16k;
+            fastcgi_buffer_size 32k;
+        }
+
+        location ~ /\.(?!well-known).* {
+            deny all;
+        }
+    }
+}
