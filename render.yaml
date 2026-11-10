@@ -34,9 +34,13 @@ services:
           - key: APP_DEBUG
             value: 'false'
           - key: APP_URL
-            sync: false # https://clinic-app.onrender.com, or your domain
-          - key: ASSET_URL
-            sync: false # same as APP_URL
+            sync: false # the service's real URL, including any -1 suffix
+          # ASSET_URL is deliberately absent. It overrides the host for
+          # /build/assets/*, and pointing it at the wrong hostname serves a
+          # blank page: the HTML asks for the CSS and JS somewhere that
+          # answers 404. Left unset, Laravel builds asset URLs from the host
+          # the browser actually used, which is right on the onrender.com URL,
+          # on preview URLs and on a custom domain alike. Set it only for a CDN.
           - key: LOG_CHANNEL
             value: stderr
           - key: LOG_LEVEL
