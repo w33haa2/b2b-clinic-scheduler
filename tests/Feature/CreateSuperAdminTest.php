@@ -69,6 +69,39 @@ test('--if-missing creates the first super admin and then leaves it alone', func
         ->and(User::query()->where('email', 'other@example.com')->exists())->toBeFalse();
 });
 
+test('--if-missing names the account it kept and the one it skipped', function () {
+    User::factory()->superAdmin()->create(['email' => 'first@example.com']);
+
+    // A deployment asking for an account it will not get is the one failure
+    // mode here that is otherwise invisible: the boot succeeds, and nobody can
+    // sign in with the credentials they configured.
+    $this->artisan('clinic:create-super-admin', [
+        '--name' => 'Ops',
+        '--email' => 'second@example.com',
+        '--password' => 'correct-horse-battery-staple9',
+        '--if-missing' => true,
+    ])
+        // Disjoint fragments on purpose: expectsOutputToContain() matches
+        // whole writes in declaration order, so a fragment that also appears
+        // in the later line would swallow it and never check the warning.
+        ->expectsOutputToContain('already exists (first@example.com)')
+        ->expectsOutputToContain('second@example.com was NOT created')
+        ->assertSuccessful();
+});
+
+test('--if-missing stays quiet when the existing super admin is the one asked for', function () {
+    User::factory()->superAdmin()->create(['email' => 'ops@example.com']);
+
+    $this->artisan('clinic:create-super-admin', [
+        '--name' => 'Ops',
+        '--email' => 'ops@example.com',
+        '--password' => 'correct-horse-battery-staple9',
+        '--if-missing' => true,
+    ])
+        ->doesntExpectOutputToContain('NOT created')
+        ->assertSuccessful();
+});
+
 test('--if-missing still creates one when only clinic members exist', function () {
     User::factory()->create(['email' => 'worker@example.com']);
 

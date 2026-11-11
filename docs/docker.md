@@ -374,15 +374,37 @@ docker compose exec -e DB_CONNECTION=pgsql -e DB_HOST=pg -e DB_PORT=5432 \
   lock needs `CACHE_STORE=database` or `redis` — not `array` or `file`. The
   very first deploy migrates without the lock, because with the database cache
   store the lock lives in a table the migrations have not created yet.
-- **The first super admin is created on deploy too.** Registration is
-  disabled and every other account is made from inside the app, so a new
-  installation has nobody who can sign in; the demo seeder cannot fill that
-  gap because it needs Faker, a dev dependency. Set `SUPER_ADMIN_EMAIL` and
-  `SUPER_ADMIN_PASSWORD` (and optionally `SUPER_ADMIN_NAME`) and the
-  entrypoint runs `clinic:create-super-admin --if-missing`, which stops as
-  soon as one super admin exists. Change the password from Settings →
-  Security afterwards and remove the variables. On a host with shell access,
-  run the command by hand instead and leave the variables unset.
+- **The first super admin is created for you.** Registration is disabled and
+  every other account is made from inside the app, so a new installation has
+  nobody who can sign in; the demo seeder cannot fill that gap because it
+  needs Faker, a dev dependency. Set `SUPER_ADMIN_EMAIL` and
+  `SUPER_ADMIN_PASSWORD` (and optionally `SUPER_ADMIN_NAME`), and the account
+  is created by whichever of these happens first:
+
+  1. the entrypoint, which runs `clinic:create-super-admin --if-missing` when
+     `RUN_MIGRATIONS=true`; or
+  2. the **first visit to the landing page**, handled by
+     `App\Actions\Auth\ProvisionInitialAdmin`.
+
+  The second exists for hosts where the deploy log is the only thing you can
+  see and the entrypoint's attempt is easy to miss. Both stop as soon as one
+  super admin exists, so they cannot produce two accounts, and a lock means
+  simultaneous first visits cannot either. Change the password from
+  Settings → Security afterwards and remove the variables. On a host with
+  shell access, run the command by hand and leave the variables unset.
+
+  Two things that make this look broken when it is not:
+
+  - **It will not replace an existing super admin.** If *any* super admin
+     exists the account you configured is skipped, and the deploy log names
+     both: `A super admin already exists (someone@example.com)` followed by
+     `you@example.com was NOT created`.
+  - **`SUPER_ADMIN_PASSWORD` must satisfy the production policy**, which
+     `AppServiceProvider` sets to 12+ characters with mixed case, numbers,
+     symbols, and not present in a known breach. A password that fails is
+     reported to the log — never to the visitor — and retried at most once
+     every five minutes, so a misconfigured deployment cannot turn its own
+     home page into an outbound request amplifier.
 
 ---
 

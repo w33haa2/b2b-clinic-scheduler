@@ -2,11 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\Auth\ProvisionInitialAdmin;
 use App\Models\User;
-use App\Support\ActivityLogger;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rules\Password;
 
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
@@ -20,6 +18,8 @@ use function Laravel\Prompts\text;
  *
  * With --if-missing this is safe to run on every boot, which is how a host
  * without shell access bootstraps itself (see docker/render/entrypoint.sh).
+ * Hosts that cannot run a command at all do the same thing from the landing
+ * page instead; see App\Actions\Auth\ProvisionInitialAdmin.
  */
 class CreateSuperAdmin extends Command
 {
@@ -41,29 +41,39 @@ class CreateSuperAdmin extends Command
      */
     protected $description = 'Create a super admin, for bootstrapping a new deployment';
 
-    public function handle(): int
+    public function handle(ProvisionInitialAdmin $provisionInitialAdmin): int
     {
-        if ($this->option('if-missing') && User::query()->where('is_super_admin', true)->exists()) {
-            $this->components->info('A super admin already exists; leaving it alone.');
+        if ($this->option('if-missing')) {
+            $existing = User::query()->where('is_super_admin', true)->orderBy('id')->first();
 
-            return self::SUCCESS;
+            if ($existing !== null) {
+                $this->components->info("A super admin already exists ({$existing->email}); leaving it alone.");
+
+                // Naming both accounts turns the otherwise silent case of "the
+                // deployment asked for a different person" into something the
+                // boot log explains, rather than an account that never shows up.
+                // Read as a raw option: prompting here would ask an interactive
+                // operator for details only to discard them a line later.
+                $requested = $this->option('email');
+                $requested = is_scalar($requested) ? trim((string) $requested) : '';
+
+                if ($requested !== '' && $requested !== $existing->email) {
+                    $this->components->warn(
+                        "{$requested} was NOT created. Remove {$existing->email} first if you meant to replace it."
+                    );
+                }
+
+                return self::SUCCESS;
+            }
         }
 
-        $name = $this->value('name', 'Name');
-        $email = $this->value('email', 'Email');
-        $plainPassword = $this->value('password', 'Password', secret: true);
+        $data = [
+            'name' => $this->value('name', 'Name'),
+            'email' => $this->value('email', 'Email'),
+            'password' => $this->value('password', 'Password', secret: true),
+        ];
 
-        $validator = Validator::make(
-            ['name' => $name, 'email' => $email, 'password' => $plainPassword],
-            [
-                'name' => ['required', 'string', 'max:255'],
-                'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
-                // The same strength policy the web forms use. Their
-                // "confirmed" rule is left off: there is no second field to
-                // confirm against on a command line.
-                'password' => ['required', 'string', Password::default()],
-            ],
-        );
+        $validator = $provisionInitialAdmin->validator($data);
 
         if ($validator->fails()) {
             foreach ($validator->errors()->all() as $message) {
@@ -73,17 +83,7 @@ class CreateSuperAdmin extends Command
             return self::FAILURE;
         }
 
-        // is_super_admin is deliberately not mass-assignable, and the account
-        // is created verified because nobody can send it a verification email
-        // before it exists.
-        $user = ActivityLogger::quietly(function () use ($name, $email, $plainPassword): User {
-            $user = new User(['name' => $name, 'email' => $email, 'password' => $plainPassword]);
-            $user->forceFill(['is_super_admin' => true, 'email_verified_at' => now()])->save();
-
-            return $user;
-        });
-
-        app(ActivityLogger::class)->log('user.created', $user, null, $user->name, context: ['via' => 'console']);
+        $user = $provisionInitialAdmin->create($data, via: 'console');
 
         $this->components->info("Super admin {$user->email} created. Sign in at ".url('/admin/login').'.');
 

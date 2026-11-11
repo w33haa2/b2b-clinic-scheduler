@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Auth\ProvisionInitialAdmin;
 use App\Models\ClinicPermission;
 use Illuminate\Http\Response as HttpResponse;
 use Inertia\Inertia;
@@ -9,12 +10,19 @@ use Inertia\Response;
 
 class PublicSiteController extends Controller
 {
+    public function __construct(private ProvisionInitialAdmin $provisionInitialAdmin) {}
+
     /**
      * The landing page. SEO tags are passed to the Blade root view so they are
      * in the HTML even when the SSR server is unavailable.
      */
     public function home(): Response
     {
+        // A deployment with no shell has no other way to get its first
+        // account. This is a no-op once that account exists, and it never
+        // throws: the landing page renders either way.
+        $this->provisionInitialAdmin->handle();
+
         $url = url('/');
         $name = config('app.name');
         $description = config('seo.description');

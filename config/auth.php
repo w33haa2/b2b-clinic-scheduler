@@ -114,4 +114,27 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Initial Super Admin
+    |--------------------------------------------------------------------------
+    |
+    | Registration is disabled and every other account is created from inside
+    | the app, so a fresh installation has nobody who can sign in. When these
+    | are set and the installation has no super admin yet, one is created on
+    | the first request to the landing page. See App\Actions\Auth\
+    | ProvisionInitialAdmin.
+    |
+    | These are read here rather than through env() at the point of use: the
+    | production image runs "artisan optimize", and once the config is cached
+    | env() returns null everywhere outside of these files.
+    |
+    */
+
+    'initial_admin' => [
+        'name' => env('SUPER_ADMIN_NAME', 'Super Admin'),
+        'email' => env('SUPER_ADMIN_EMAIL'),
+        'password' => env('SUPER_ADMIN_PASSWORD'),
+    ],
+
 ];
