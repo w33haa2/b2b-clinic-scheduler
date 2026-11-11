@@ -177,7 +177,8 @@ block), and that `docker compose ps queue` is up. After changing `.env`, run
 `docker compose restart queue`: the worker reads configuration when it starts.
 
 Production has no Mailpit. Set real SMTP (or another mailer) in `.env.production`.
-Password-reset emails are still sent by the `queue` service.
+Password-reset emails are still sent by the `queue` service. For Gmail, see
+[Mail through Gmail SMTP](#mail-through-gmail-smtp).
 
 ### Ports
 
@@ -405,6 +406,60 @@ docker compose exec -e DB_CONNECTION=pgsql -e DB_HOST=pg -e DB_PORT=5432 \
      reported to the log — never to the visitor — and retried at most once
      every five minutes, so a misconfigured deployment cannot turn its own
      home page into an outbound request amplifier.
+
+### Mail through Gmail SMTP
+
+This app sends exactly two kinds of mail — password resets and clinic
+invitations — and **both go through the queue**. That shapes everything about
+diagnosing it: the HTTP request always succeeds, so a broken mail
+configuration never shows up in the browser. It shows up as a row in
+`failed_jobs` and a line in the worker's log, or as nothing at all.
+
+Two consequences worth internalising:
+
+- **A queue worker must be running.** Either `RUN_QUEUE=true` on the web
+  service, or a separate `clinic-queue` worker. Without one, mail is queued
+  and never sent, with no error anywhere.
+- **The worker needs the `MAIL_*` variables, not just the web service.** The
+  worker is the process that talks to Gmail. In `render.yaml` they live in the
+  `clinic-shared` environment group for exactly this reason.
+
+The settings:
+
+| Variable | Value |
+| --- | --- |
+| `MAIL_MAILER` | `smtp` |
+| `MAIL_HOST` | `smtp.gmail.com` |
+| `MAIL_PORT` | `465` |
+| `MAIL_SCHEME` | `smtps` |
+| `MAIL_USERNAME` | the full Gmail address |
+| `MAIL_PASSWORD` | a 16-character **App Password** |
+| `MAIL_FROM_ADDRESS` | the same address as `MAIL_USERNAME` |
+| `MAIL_FROM_NAME` | `Clinic App` |
+
+The parts that bite:
+
+- **`MAIL_SCHEME` accepts only `smtp` and `smtps`.** `tls` and `ssl` throw
+  `UnsupportedSchemeException`, which — because sending is queued — lands in
+  `failed_jobs` instead of in front of anyone. Port 465 pairs with `smtps`
+  (TLS from the first byte); port 587 pairs with `smtp` (STARTTLS). Do not mix
+  587 with `smtps`: that forces implicit TLS onto a port that does not speak
+  it. 465 is the better default here because this mail carries password-reset
+  links and implicit TLS has no downgrade window.
+- **An App Password is required.** Google stopped accepting account passwords
+  for SMTP in 2022. Turn on 2-Step Verification, then create one at
+  <https://myaccount.google.com/apppasswords>. It is displayed in four
+  space-separated groups; paste it without the spaces.
+- **Gmail rewrites the From header** to the authenticated account unless
+  `MAIL_FROM_ADDRESS` matches `MAIL_USERNAME` or an alias verified under
+  Gmail → Settings → Accounts → "Send mail as". It does this silently.
+- **Sending limits** are roughly 500 recipients a day on a free account and
+  2,000 on Workspace. Fine for invitations and resets. Anything bulk needs a
+  transactional provider.
+
+To check it works without a shell, use the password-reset flow: open
+`/admin/forgot-password`, enter a real address, and watch the inbox. If
+nothing arrives, the answer is in the queue worker's log, not the web log.
 
 ---
 

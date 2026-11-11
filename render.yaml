@@ -103,16 +103,26 @@ services:
           - key: INERTIA_SSR_ENABLED
             value: 'false'
 
+          # Gmail SMTP. Port 465 with "smtps" is TLS from the first byte;
+          # the alternative is 587 with "smtp" (STARTTLS). Only those two
+          # schemes exist -- "tls" throws, and since mail is queued that
+          # lands in failed_jobs where nobody looks. See docs/docker.md.
           - key: MAIL_MAILER
             value: smtp
           - key: MAIL_HOST
-            sync: false
+            value: smtp.gmail.com
           - key: MAIL_PORT
-            value: '587'
+            value: '465'
+          - key: MAIL_SCHEME
+            value: smtps
+          # The Gmail address, and a 16-character App Password (not the
+          # account password); 2-Step Verification has to be on to make one.
           - key: MAIL_USERNAME
             sync: false
           - key: MAIL_PASSWORD
             sync: false
+          # Must match MAIL_USERNAME, or a verified "Send mail as" alias.
+          # Gmail silently rewrites anything else.
           - key: MAIL_FROM_ADDRESS
             sync: false
           - key: MAIL_FROM_NAME
@@ -179,3 +189,26 @@ envVarGroups:
             value: database
           - key: INERTIA_SSR_ENABLED
             value: 'false'
+
+          # Repeated from the web service on purpose. Every mail this app
+          # sends is queued, so clinic-queue is the service that actually
+          # talks to Gmail; without these it would fall back to MAIL_MAILER=log
+          # and drop every invitation and password reset without an error.
+          # The web service keeps its own copy because the single-service
+          # layout runs the queue inside it via RUN_QUEUE.
+          - key: MAIL_MAILER
+            value: smtp
+          - key: MAIL_HOST
+            value: smtp.gmail.com
+          - key: MAIL_PORT
+            value: '465'
+          - key: MAIL_SCHEME
+            value: smtps
+          - key: MAIL_USERNAME
+            sync: false
+          - key: MAIL_PASSWORD
+            sync: false
+          - key: MAIL_FROM_ADDRESS
+            sync: false
+          - key: MAIL_FROM_NAME
+            value: Clinic App

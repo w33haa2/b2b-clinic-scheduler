@@ -48,6 +48,19 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
     fi
 fi
 
+# Every mail this app sends is queued, so a mail misconfiguration never
+# reaches a user: the request succeeds, the job fails, and the row lands in
+# failed_jobs. Saying so once per deploy puts it where someone will see it.
+if [ "${MAIL_MAILER:-log}" = "log" ] || [ "${MAIL_MAILER}" = "array" ]; then
+    echo "WARNING: MAIL_MAILER=${MAIL_MAILER:-log}. Password resets and clinic"
+    echo "         invitations will NOT be delivered. Set the MAIL_* variables."
+fi
+
+if [ "${RUN_QUEUE:-false}" != "true" ] && [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+    echo "NOTE: RUN_QUEUE is not true on this service. Mail is queued, so a"
+    echo "      separate queue worker has to be running or nothing is sent."
+fi
+
 # Cache config, routes, events and views from this container's real
 # environment. Must run after migrate: the permission sync that follows a
 # migration writes rows this app reads.
