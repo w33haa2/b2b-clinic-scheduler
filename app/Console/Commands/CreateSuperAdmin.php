@@ -17,6 +17,9 @@ use function Laravel\Prompts\text;
  * Registration is disabled and every other account is created from inside the
  * app, so a new installation has nobody who can sign in. The demo seeder fills
  * that gap locally, but it needs Faker, which production images do not have.
+ *
+ * With --if-missing this is safe to run on every boot, which is how a host
+ * without shell access bootstraps itself (see docker/render/entrypoint.sh).
  */
 class CreateSuperAdmin extends Command
 {
@@ -28,7 +31,8 @@ class CreateSuperAdmin extends Command
     protected $signature = 'clinic:create-super-admin
                             {--name= : The person\'s name}
                             {--email= : The email they sign in with}
-                            {--password= : Their password (prompted for when omitted)}';
+                            {--password= : Their password (prompted for when omitted)}
+                            {--if-missing : Do nothing, successfully, if the clinic already has a super admin}';
 
     /**
      * The console command description.
@@ -39,9 +43,15 @@ class CreateSuperAdmin extends Command
 
     public function handle(): int
     {
-        $name = $this->option('name') ?: text('Name', required: true);
-        $email = $this->option('email') ?: text('Email', required: true);
-        $plainPassword = $this->option('password') ?: password('Password', required: true);
+        if ($this->option('if-missing') && User::query()->where('is_super_admin', true)->exists()) {
+            $this->components->info('A super admin already exists; leaving it alone.');
+
+            return self::SUCCESS;
+        }
+
+        $name = $this->value('name', 'Name');
+        $email = $this->value('email', 'Email');
+        $plainPassword = $this->value('password', 'Password', secret: true);
 
         $validator = Validator::make(
             ['name' => $name, 'email' => $email, 'password' => $plainPassword],
@@ -78,5 +88,23 @@ class CreateSuperAdmin extends Command
         $this->components->info("Super admin {$user->email} created. Sign in at ".url('/admin/login').'.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * An option's value, asking for it only when someone is there to answer.
+     * Running without a terminal (a container entrypoint) returns an empty
+     * string, which the validation below reports properly instead of hanging
+     * on a prompt nobody can see.
+     */
+    private function value(string $option, string $label, bool $secret = false): string
+    {
+        $given = $this->option($option);
+        $value = is_scalar($given) ? trim((string) $given) : '';
+
+        if ($value !== '' || ! $this->input->isInteractive()) {
+            return $value;
+        }
+
+        return $secret ? password($label, required: true) : text($label, required: true);
     }
 }

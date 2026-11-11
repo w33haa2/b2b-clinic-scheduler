@@ -88,6 +88,16 @@ services:
           - key: RUN_SCHEDULER
             value: 'false'
 
+          # The first super admin, created on deploy because Render's Shell
+          # is a paid feature. The entrypoint stops as soon as one exists, so
+          # these are safe to leave set. Delete them once you have signed in.
+          - key: SUPER_ADMIN_NAME
+            value: Super Admin
+          - key: SUPER_ADMIN_EMAIL
+            sync: false
+          - key: SUPER_ADMIN_PASSWORD
+            sync: false # 8+ characters, at least one number
+
           # Inertia SSR is not deployed here, so pages render in the browser.
           # See docs/docker.md for how to add it back.
           - key: INERTIA_SSR_ENABLED

@@ -27,6 +27,25 @@ if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
         echo "First deploy: no migrations table yet, migrating without a lock."
         php artisan migrate --force
     fi
+
+    # Create the first super admin, for hosts with no shell to run it from.
+    # Set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD to turn this on.
+    #
+    # --if-missing makes it a no-op the moment one super admin exists, so the
+    # variables are safe to leave in place across deploys. Tied to
+    # RUN_MIGRATIONS so only the service that prepares the database does it.
+    #
+    # A failure here is reported but does not stop the boot: being unable to
+    # create an account is no reason to take the whole site down.
+    if [ -n "${SUPER_ADMIN_EMAIL:-}" ] && [ -n "${SUPER_ADMIN_PASSWORD:-}" ]; then
+        php artisan clinic:create-super-admin \
+            --name="${SUPER_ADMIN_NAME:-Super Admin}" \
+            --email="${SUPER_ADMIN_EMAIL}" \
+            --password="${SUPER_ADMIN_PASSWORD}" \
+            --if-missing \
+            --no-interaction \
+            || echo "WARNING: could not create the super admin; the site is still starting."
+    fi
 fi
 
 # Cache config, routes, events and views from this container's real

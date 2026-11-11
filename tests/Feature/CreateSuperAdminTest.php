@@ -50,6 +50,45 @@ test('it refuses a weak password and a malformed email', function (array $option
     'not an email' => [['--name' => 'Ops', '--email' => 'not-an-email', '--password' => 'correct-horse-battery-staple']],
 ]);
 
+test('--if-missing creates the first super admin and then leaves it alone', function () {
+    $options = [
+        '--name' => 'Ops',
+        '--email' => 'ops@example.com',
+        '--password' => 'correct-horse-battery-staple9',
+        '--if-missing' => true,
+    ];
+
+    $this->artisan('clinic:create-super-admin', $options)->assertSuccessful();
+
+    // Running again on every boot must not fail, and must not make a second.
+    $this->artisan('clinic:create-super-admin', [...$options, '--email' => 'other@example.com'])
+        ->expectsOutputToContain('A super admin already exists')
+        ->assertSuccessful();
+
+    expect(User::query()->where('is_super_admin', true)->count())->toBe(1)
+        ->and(User::query()->where('email', 'other@example.com')->exists())->toBeFalse();
+});
+
+test('--if-missing still creates one when only clinic members exist', function () {
+    User::factory()->create(['email' => 'worker@example.com']);
+
+    $this->artisan('clinic:create-super-admin', [
+        '--name' => 'Ops',
+        '--email' => 'ops@example.com',
+        '--password' => 'correct-horse-battery-staple9',
+        '--if-missing' => true,
+    ])->assertSuccessful();
+
+    expect(User::query()->where('is_super_admin', true)->count())->toBe(1);
+});
+
+test('without a terminal it reports what is missing instead of hanging on a prompt', function () {
+    $this->artisan('clinic:create-super-admin', ['--email' => 'ops@example.com', '--no-interaction' => true])
+        ->assertFailed();
+
+    expect(User::query()->count())->toBe(0);
+});
+
 test('creating one is recorded in the platform activity log', function () {
     $this->artisan('clinic:create-super-admin', [
         '--name' => 'Ops',

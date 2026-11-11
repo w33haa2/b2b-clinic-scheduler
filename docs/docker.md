@@ -371,7 +371,18 @@ docker compose exec -e DB_CONNECTION=pgsql -e DB_HOST=pg -e DB_PORT=5432 \
 - **Migrations run on deploy**, from the web service's entrypoint
   (`RUN_MIGRATIONS=true`). It uses `migrate --force --isolated`, which takes a
   cache lock so concurrent deploys and multiple instances cannot race. That
-  lock needs `CACHE_STORE=database` or `redis` — not `array` or `file`.
+  lock needs `CACHE_STORE=database` or `redis` — not `array` or `file`. The
+  very first deploy migrates without the lock, because with the database cache
+  store the lock lives in a table the migrations have not created yet.
+- **The first super admin is created on deploy too.** Registration is
+  disabled and every other account is made from inside the app, so a new
+  installation has nobody who can sign in; the demo seeder cannot fill that
+  gap because it needs Faker, a dev dependency. Set `SUPER_ADMIN_EMAIL` and
+  `SUPER_ADMIN_PASSWORD` (and optionally `SUPER_ADMIN_NAME`) and the
+  entrypoint runs `clinic:create-super-admin --if-missing`, which stops as
+  soon as one super admin exists. Change the password from Settings →
+  Security afterwards and remove the variables. On a host with shell access,
+  run the command by hand instead and leave the variables unset.
 
 ---
 
