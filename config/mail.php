@@ -45,7 +45,15 @@ return [
             'port' => env('MAIL_PORT', 2525),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            // Seconds to wait on the socket, when connecting and when reading.
+            //
+            // This was null, which leaves Symfony on PHP's default_socket_timeout
+            // of 60s: exactly the queue worker's own timeout. A network that drops
+            // SMTP traffic rather than refusing it therefore hung until the worker
+            // was SIGKILLed, and a killed worker never writes down why. No log
+            // line, no failed_jobs row. Timing out first is what turns that
+            // silence into a readable error.
+            'timeout' => env('MAIL_TIMEOUT') === null ? 15.0 : (float) env('MAIL_TIMEOUT'),
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 

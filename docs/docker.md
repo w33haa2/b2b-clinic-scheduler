@@ -432,6 +432,7 @@ The settings:
 | `MAIL_HOST` | `smtp.gmail.com` |
 | `MAIL_PORT` | `465` |
 | `MAIL_SCHEME` | `smtps` |
+| `MAIL_TIMEOUT` | `15` |
 | `MAIL_USERNAME` | the full Gmail address |
 | `MAIL_PASSWORD` | a 16-character **App Password** |
 | `MAIL_FROM_ADDRESS` | the same address as `MAIL_USERNAME` |
@@ -456,6 +457,39 @@ The parts that bite:
 - **Sending limits** are roughly 500 recipients a day on a free account and
   2,000 on Workspace. Fine for invitations and resets. Anything bulk needs a
   transactional provider.
+
+**`MAIL_TIMEOUT` has to stay below the queue worker's timeout** (60s by
+default). Laravel ships `'timeout' => null` for SMTP, which leaves Symfony on
+PHP's `default_socket_timeout` of 60s -- exactly the worker's own limit. On a
+network that *drops* SMTP rather than refusing it, the two race and the worker
+loses:
+
+```
+17:59:21  App\Notifications\QueuedResetPassword .......... RUNNING
+18:00:22  Worker STOPPED Job timed out
+18:00:22  WARN exited: queue (terminated by SIGKILL; not expected)
+```
+
+A SIGKILLed worker never writes down why it died: no log line, no
+`failed_jobs` row, and the UI still reports the mail as sent. With the socket
+timeout lower, the same failure becomes a readable one:
+
+```
+18:06:01  App\Notifications\QueuedResetPassword .......... RUNNING
+18:06:06  App\Notifications\QueuedResetPassword .......... 5s FAIL
+
+TransportException: Connection could not be established with host
+"ssl://...:465": stream_socket_client(): ... (Connection timed out)
+```
+
+That message is the diagnosis:
+
+| Message in the worker log | What it means |
+| --- | --- |
+| `Connection timed out` | The port is blocked or the host is wrong. Try `MAIL_PORT=587` with `MAIL_SCHEME=smtp`; if that also times out, outbound SMTP is blocked and you need a provider with an HTTPS API instead. |
+| `Connection refused` | Nothing is listening. Wrong port. |
+| `Expected response code 235 but got code 535` | The credentials are wrong -- almost always the account password instead of an App Password. |
+| `UnsupportedSchemeException` | `MAIL_SCHEME` is something other than `smtp` or `smtps`. |
 
 To check it works without a shell, use the password-reset flow: open
 `/admin/forgot-password`, enter a real address, and watch the inbox. If
