@@ -100,7 +100,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 const emit = defineEmits<{ saved: [dailySession: DailySession]; cancel: [] }>();
 
-const { clinicId, context } = useClinic();
+const { clinicId, context, schedule, openHours } = useClinic();
 const timezone = computed(() => context.value.clinic.timezone);
 const isEditing = computed(() => props.dailySession !== null);
 
@@ -144,10 +144,20 @@ const saving = ref(false);
 
 const unplacedList = useTemplateRef<HTMLElement>('unplacedList');
 
-/** 15-minute steps from 05:00 to 23:00. */
-const times = Array.from({ length: (23 - 5) * 4 + 1 }, (_, index) =>
-    timeOf(5 * 60 + index * 15),
-);
+/**
+ * 15-minute steps across the clinic's opening hours. A clinic that allows
+ * booking outside them gets the whole day, since that is the point of the
+ * setting.
+ */
+const times = computed(() => {
+    const { start, end } = schedule.value.allow_outside_hours
+        ? { start: 0, end: 24 }
+        : openHours.value;
+
+    return Array.from({ length: (end - start) * 4 + 1 }, (_, index) =>
+        timeOf(start * 60 + index * 15),
+    );
+});
 
 const defaultService = computed(() =>
     props.catalog.find(
@@ -181,9 +191,13 @@ onMounted(() => {
         clinic_user_id: String(session?.clinic_user?.id ?? own?.id ?? ''),
         line_item_id: session?.line_item ? String(session.line_item.id) : '',
         unit_price: session?.unit_price ?? '',
-        start_time: session?.start_time ?? '08:00',
-        end_time: session?.end_time ?? '17:00',
-        weekdays: session?.weekdays ?? [1, 2, 3, 4, 5],
+        // A new daily session starts as the clinic's own working day, which
+        // is both the common case and always valid.
+        start_time: session?.start_time ?? schedule.value.weekday_opens_at,
+        end_time: session?.end_time ?? schedule.value.weekday_closes_at,
+        weekdays:
+            session?.weekdays ??
+            schedule.value.open_weekdays.filter((day) => day <= 5),
         starts_on:
             session?.starts_on ??
             new Date().toLocaleDateString('en-CA', {

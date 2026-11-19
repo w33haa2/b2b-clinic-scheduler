@@ -28,6 +28,16 @@ class SessionMemberResource extends JsonResource
             'ends_at' => $this->ends_at,
             // Changed by hand for this day only; regular plan changes skip it.
             'customised' => $this->customised,
+            /*
+             * Set when the patient missed this day and was given a makeup
+             * elsewhere. Their bill and payment went with them, so the row
+             * that stays here is the record that they were expected.
+             */
+            'moved_to' => $this->when($this->wasMoved(), fn (): array => [
+                'session_member_id' => $this->moved_to_clinic_session_member_id,
+                'moved_at' => $this->moved_at,
+                'reason' => $this->moved_reason,
+            ]),
             'line_items' => SessionLineItemResource::collection($this->whenLoaded('sessionLineItems')),
         ];
     }

@@ -32,8 +32,10 @@ use App\Http\Controllers\Api\Clinic\PermissionController;
 use App\Http\Controllers\Api\Clinic\PrepaymentController;
 use App\Http\Controllers\Api\Clinic\ReceivableController;
 use App\Http\Controllers\Api\Clinic\RoleController;
+use App\Http\Controllers\Api\Clinic\ScheduleSettingController;
 use App\Http\Controllers\Api\Clinic\SessionLineItemController;
 use App\Http\Controllers\Api\Clinic\SessionMemberController;
+use App\Http\Controllers\Api\Clinic\SessionMemberRescheduleController;
 use App\Http\Controllers\Api\Clinic\SessionMemberSlotController;
 use App\Http\Controllers\Api\Clinic\SessionStatusController;
 use App\Http\Controllers\Api\Clinic\TransactionController;
@@ -97,6 +99,10 @@ Route::middleware('auth:sanctum')->group(function () {
                 // patients are the clinic's books, not a worker's business.
                 Route::get('payout-settings', [PayoutSettingController::class, 'show'])->name('payout-settings.show');
                 Route::put('payout-settings', [PayoutSettingController::class, 'update'])->name('payout-settings.update');
+                // Opening hours decide what the calendar offers and what may
+                // be booked, so they are the clinic's to set, not a worker's.
+                Route::get('schedule-settings', [ScheduleSettingController::class, 'show'])->name('schedule-settings.show');
+                Route::put('schedule-settings', [ScheduleSettingController::class, 'update'])->name('schedule-settings.update');
                 Route::get('receivables', [ReceivableController::class, 'index'])->name('receivables.index');
                 Route::apiResource('invitations', InvitationController::class)
                     ->only(['index', 'store', 'destroy'])
@@ -171,6 +177,8 @@ Route::middleware('auth:sanctum')->group(function () {
                     ->name('sessions.members.payment.update');
                 Route::put('sessions/{clinicSession}/members/{sessionMember}/slot', [SessionMemberSlotController::class, 'update'])
                     ->name('sessions.members.slot.update');
+                Route::post('sessions/{clinicSession}/members/{sessionMember}/reschedule', [SessionMemberRescheduleController::class, 'store'])
+                    ->name('sessions.members.reschedule.store');
                 Route::apiResource('sessions.members.line-items', SessionLineItemController::class)
                     ->except(['show'])
                     ->parameters(['sessions' => 'clinicSession', 'members' => 'sessionMember', 'line-items' => 'sessionLineItem']);

@@ -41,6 +41,7 @@ class ClinicHomeController extends Controller
     public const ADMIN_PAGES = [
         'admin.clinics.receivables',
         'admin.clinics.payout-settings',
+        'admin.clinics.schedule-settings',
     ];
 
     /**

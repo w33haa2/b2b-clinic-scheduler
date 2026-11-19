@@ -156,6 +156,17 @@ class Clinic extends Model
     }
 
     /**
+     * When the clinic is open. Created on demand with the defaults; use
+     * scheduleSettings() to read it.
+     *
+     * @return HasOne<ClinicScheduleSetting, $this>
+     */
+    public function clinicScheduleSetting(): HasOne
+    {
+        return $this->hasOne(ClinicScheduleSetting::class);
+    }
+
+    /**
      * @return HasMany<Attendance, $this>
      */
     public function attendances(): HasMany
@@ -216,6 +227,18 @@ class Clinic extends Model
     public function payoutSettings(): ClinicPayoutSetting
     {
         return $this->clinicPayoutSetting()->firstOrCreate([]);
+    }
+
+    /**
+     * The clinic's opening hours, created with the defaults the first time
+     * they are needed.
+     */
+    public function scheduleSettings(): ClinicScheduleSetting
+    {
+        $settings = $this->clinicScheduleSetting()->firstOrCreate([]);
+        $settings->setRelation('clinic', $this);
+
+        return $settings;
     }
 
     public function activityEntity(): string

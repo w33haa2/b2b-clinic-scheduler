@@ -4,6 +4,7 @@ import {
     Building2,
     CalendarCheck2,
     CalendarDays,
+    Clock,
     LayoutGrid,
     PiggyBank,
     ReceiptText,
@@ -81,6 +82,17 @@ const clinicNav = computed<NavItem[]>(() => {
             permission: 'clinic.daily-sessions.index',
         },
     ].filter((item) => can(item.permission));
+
+    // Opening hours decide what the calendar offers, so they sit with it,
+    // but setting them is Clinic Admin only and never a permission.
+    if (context.member.is_admin) {
+        scheduleItems.push({
+            title: 'Schedule settings',
+            href: clinicPages.scheduleSettings(id),
+            icon: Clock,
+            permission: '',
+        });
+    }
 
     /*
      * Payouts is a group for admins: the runs themselves, the receivables

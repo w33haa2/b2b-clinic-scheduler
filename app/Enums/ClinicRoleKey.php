@@ -46,6 +46,7 @@ enum ClinicRoleKey: string
                 'clinic.sessions.members.destroy',
                 'clinic.sessions.members.payment.update',
                 'clinic.sessions.members.slot.update',
+                'clinic.sessions.members.reschedule.store',
                 'clinic.sessions.members.line-items.index',
                 'clinic.sessions.members.line-items.store',
                 'clinic.sessions.members.line-items.update',

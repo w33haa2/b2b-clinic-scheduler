@@ -46,6 +46,7 @@ be on at most one invoice and at most one payout: the same lock, used twice.
 
 ```mermaid
 erDiagram
+    clinics ||--o| clinic_schedule_settings : "opens by"
     clinics ||--o| clinic_payout_settings : "splits revenue by"
     clinic_users ||--o{ attendances : "working days"
     attendance_statuses ||--o{ attendances : "attendance_status_id"
@@ -82,42 +83,48 @@ erDiagram
 
 ## Tables
 
-| Table                      | Model                   | Purpose                                                                      | Key columns / rules                                                                                                                                                                                                         |
-| -------------------------- | ----------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`                    | `User`                  | Login accounts                                                               | `is_super_admin` (not mass-assignable)                                                                                                                                                                                      |
-| `clinics`                  | `Clinic`                | The tenant                                                                   | `name`, `address`, `timezone`; soft-deleted                                                                                                                                                                                 |
-| `clinic_users`             | `ClinicUser`            | A user's membership in a clinic                                              | unique (`clinic_id`, `user_id`); soft-deleted                                                                                                                                                                               |
-| `clinic_roles`             | `ClinicRole`            | Roles per clinic                                                             | unique (`clinic_id`, `name`); `key` = `admin` / `worker` for the two built-in roles, `null` for custom ones                                                                                                                 |
-| `clinic_permissions`       | `ClinicPermission`      | One row per grantable clinic API route                                       | `name` = route name, e.g. `clinic.patients.store`                                                                                                                                                                           |
-| `clinic_user_role`         | —                       | Member ↔ role pivot                                                          | composite primary key                                                                                                                                                                                                       |
-| `clinic_role_permission`   | —                       | Role ↔ permission pivot                                                      | composite primary key                                                                                                                                                                                                       |
-| `patients`                 | `Patient`               | A clinic's patient list                                                      | names, `birth_date`, `sex` (`male`/`female`/`other`), contact details, `notes`; soft-deleted                                                                                                                                |
-| `session_statuses`         | `SessionStatus` enum    | Lookup: PENDING, ONGOING, DONE, CANCELLED                                    | fixed IDs 1–4                                                                                                                                                                                                               |
-| `clinic_sessions`          | `ClinicSession`         | A booked session, or one day of a daily session                              | `clinic_user_id` (the one member holding it), `name?`, `starts_at`, `ends_at` (UTC), `status_id`; `daily_session_id` + `occurs_on` (unique together) for a daily session's day                                              |
-| `daily_sessions`           | `DailySession`          | A session that repeats on chosen weekdays inside a daily window              | `clinic_user_id` (**unique**: one per staff member), `name`, `line_item_id` + `unit_price` (billed per patient per day), `start_time`/`end_time` (clinic timezone), `weekdays` (ISO 1–7), `starts_on`, `ends_on?`           |
-| `daily_session_patients`   | `DailySessionPatient`   | A patient enrolled in a daily session, with their regular plan               | unique (`daily_session_id`, `patient_id`); `line_item_id` + `unit_price` (service billed every day), usual slot `start_time` (clinic timezone) + `duration_minutes` (both null = no usual slot)                             |
-| `payment_statuses`         | `PaymentStatus` enum    | Lookup: PENDING, DONE, REFUNDED                                              | fixed IDs 1–3                                                                                                                                                                                                               |
-| `clinic_session_members`   | `ClinicSessionMember`   | A patient attending a session                                                | unique (`clinic_session_id`, `patient_id`); `starts_at`/`ends_at` = plotted slot on a daily session's day (null until plotted); `customised` = changed by hand for that day only                                            |
-| `payments`                 | `Payment`               | What one patient owes for one session, and whether it is paid                | one per session member (`clinic_session_member_id` unique); `clinic_id`, `clinic_session_id`, `patient_id`, `payment_status_id`, `amount` (set when paid), `paid_at`, `refunded_at`                                         |
-| `line_items`               | `LineItem`              | The clinic's billable catalog                                                | unique (`clinic_id`, `item_code`); `price` decimal(12,2); soft-deleted                                                                                                                                                      |
-| `session_line_items`       | `SessionLineItem`       | A catalog item billed to one patient in one session                          | `clinic_session_member_id`, `line_item_id`, `quantity`, `unit_price` (copied from the catalog)                                                                                                                              |
-| `transaction_types`        | `TransactionType` enum  | Lookup: INBOUND, REVERSED                                                    | fixed IDs 1–2                                                                                                                                                                                                               |
-| `transactions`             | `Transaction`           | Append-only money ledger                                                     | `payment_id`, `session_line_item_id`, `transaction_type_id`, `amount`, `clinic_user_id` (who recorded it)                                                                                                                   |
-| `invoices`                 | `Invoice`               | A statement for one patient                                                  | unique (`clinic_id`, `number`); `issued_at`, `notes`                                                                                                                                                                        |
-| `invoice_items`            | `InvoiceItem`           | Session line items on an invoice                                             | `invoice_id`; `session_line_item_id` is **unique**                                                                                                                                                                          |
-| `clinic_payout_settings`   | `ClinicPayoutSetting`   | How a clinic splits what it bills with its staff                             | one per clinic (`clinic_id` is unique), created on demand; `worker_share_percentage` (default 60), `include_pending_payments` (default true), `require_attendance` (default false)                                          |
-| `attendances`              | `Attendance`            | One member's working day                                                     | unique (`clinic_user_id`, `work_date`); `work_date` is a date in the clinic's timezone; `attendance_status_id`, `checked_in_at`, `checked_out_at`, `notes`, `recorded_by_clinic_user_id`                                    |
-| `discounts`                | `Discount`              | Money taken off a billed item                                                | `clinic_user_id` null = clinic-wide, set = that member's own; `name`, `discount_type_id`, `discount_target_id`, `value` decimal(12,2), `is_active`; soft-deleted                                                            |
-| `payouts`                  | `Payout`                | What a clinic owes one member for a period                                   | unique (`clinic_id`, `number`, shown as `PAY-000001`); `period_start`/`period_end`, `payout_status_id`, `share_percentage`, `gross_amount`, `discount_total`, `worker_amount`, `clinic_amount`, `pending_amount`, `paid_at` |
-| `payout_items`             | `PayoutItem`            | One billed item on a payout, with its split frozen                           | `payout_id`; `session_line_item_id` is **unique**; `share_percentage`, `gross_amount`, `discount_amount`, `worker_amount`, `clinic_amount`, `was_pending`, `settled_at`                                                     |
-| `clinic_invitations`       | `ClinicInvitation`      | An email invited to join a clinic                                            | `email`, `clinic_role_id` (Clinic Worker), `token_hash` (SHA-256, unique), `invited_by_user_id`, `expires_at` (7 days), `accepted_at`, `accepted_by_user_id`, `revoked_at`                                                  |
-| `patient_form_fields`      | `PatientFormField`      | One input on a clinic's patient form                                         | unique (`clinic_id`, `key`) **including removed rows**; `label`, `patient_form_field_type_id`, `options`, `validation`, `is_required`, `section`, `position`; `patient_column` set = built-in; soft-deleted                 |
-| `patient_field_values`     | `PatientFieldValue`     | One patient's answer to one custom field                                     | unique (`patient_id`, `patient_form_field_id`); `value` is text (a MULTISELECT answer is a JSON array); the field is restricted, not cascaded, so archiving one keeps its answers                                           |
-| `patient_progress_notes`   | `PatientProgressNote`   | How a patient is doing on one day                                            | `patient_id`, `clinic_user_id` (the author), `clinic_session_id?`, `recorded_on` (a date in the clinic's timezone), `progress_rating_id`, `summary`, `body`, `plan`; soft-deleted                                           |
-| `patient_progress_metrics` | `PatientProgressMetric` | A measurement on a progress note                                             | unique (`patient_progress_note_id`, `name`); `value` decimal(10,2), `unit` (e.g. `/10`, `deg`, `kg`)                                                                                                                        |
-| `patient_form_invitations` | `PatientFormInvitation` | A link letting a patient fill the form in themselves                         | `patient_id?` (set = update that record), `name`, `email`, `token_hash` (SHA-256, unique), `created_by_clinic_user_id`, `expires_at` (14 days), `submitted_at`, `revoked_at`                                                |
-| `calendar_filters`         | `CalendarFilter`        | A schedule filter a member saved for themselves                              | `clinic_id`, `clinic_user_id`, `name`, `rules` (JSON: `match` + `conditions`)                                                                                                                                               |
-| `activity_logs`            | `ActivityLog`           | Append-only audit trail of every change ([activity-log.md](activity-log.md)) | `clinic_id` (null = platform), `user_id`, `action`, subject, `changes`, `ip_address`; pruned after `ACTIVITY_RETENTION_DAYS`                                                                                                |
+| Table                      | Model                   | Purpose                                                                      | Key columns / rules                                                                                                                                                                                                                            |
+| -------------------------- | ----------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`                    | `User`                  | Login accounts                                                               | `is_super_admin` (not mass-assignable)                                                                                                                                                                                                         |
+| `clinics`                  | `Clinic`                | The tenant                                                                   | `name`, `address`, `timezone`; soft-deleted                                                                                                                                                                                                    |
+| `clinic_users`             | `ClinicUser`            | A user's membership in a clinic                                              | unique (`clinic_id`, `user_id`); soft-deleted                                                                                                                                                                                                  |
+| `clinic_roles`             | `ClinicRole`            | Roles per clinic                                                             | unique (`clinic_id`, `name`); `key` = `admin` / `worker` for the two built-in roles, `null` for custom ones                                                                                                                                    |
+| `clinic_permissions`       | `ClinicPermission`      | One row per grantable clinic API route                                       | `name` = route name, e.g. `clinic.patients.store`                                                                                                                                                                                              |
+| `clinic_user_role`         | —                       | Member ↔ role pivot                                                          | composite primary key                                                                                                                                                                                                                          |
+| `clinic_role_permission`   | —                       | Role ↔ permission pivot                                                      | composite primary key                                                                                                                                                                                                                          |
+| `patients`                 | `Patient`               | A clinic's patient list                                                      | names, `birth_date`, `sex` (`male`/`female`/`other`), contact details, `notes`; soft-deleted                                                                                                                                                   |
+| `session_statuses`         | `SessionStatus` enum    | Lookup: PENDING, ONGOING, DONE, CANCELLED                                    | fixed IDs 1–4                                                                                                                                                                                                                                  |
+| `clinic_sessions`          | `ClinicSession`         | A booked session, or one day of a daily session                              | `clinic_user_id` (the one member holding it), `name?`, `starts_at`, `ends_at` (UTC), `status_id`; `daily_session_id` + `occurs_on` (unique together) for a daily session's day                                                                 |
+| `daily_sessions`           | `DailySession`          | A session that repeats on chosen weekdays inside a daily window              | `clinic_user_id` (**unique**: one per staff member), `name`, `line_item_id` + `unit_price` (billed per patient per day), `start_time`/`end_time` (clinic timezone), `weekdays` (ISO 1–7), `starts_on`, `ends_on?`                              |
+| `daily_session_patients`   | `DailySessionPatient`   | A patient enrolled in a daily session, with their regular plan               | unique (`daily_session_id`, `patient_id`); `line_item_id` + `unit_price` (service billed every day), usual slot `start_time` (clinic timezone) + `duration_minutes` (both null = no usual slot)                                                |
+| `payment_statuses`         | `PaymentStatus` enum    | Lookup: PENDING, DONE, REFUNDED                                              | fixed IDs 1–3                                                                                                                                                                                                                                  |
+| `clinic_session_members`   | `ClinicSessionMember`   | A patient attending a session                                                | unique (`clinic_session_id`, `patient_id`); `starts_at`/`ends_at` = plotted slot on a daily session's day (null until plotted); `customised` = changed by hand for that day only                                                               |
+| `payments`                 | `Payment`               | What one patient owes for one session, and whether it is paid                | one per session member (`clinic_session_member_id` unique); `clinic_id`, `clinic_session_id`, `patient_id`, `payment_status_id`, `amount` (set when paid), `paid_at`, `refunded_at`                                                            |
+| `line_items`               | `LineItem`              | The clinic's billable catalog                                                | unique (`clinic_id`, `item_code`); `price` decimal(12,2); soft-deleted                                                                                                                                                                         |
+| `session_line_items`       | `SessionLineItem`       | A catalog item billed to one patient in one session                          | `clinic_session_member_id`, `line_item_id`, `quantity`, `unit_price` (copied from the catalog)                                                                                                                                                 |
+| `transaction_types`        | `TransactionType` enum  | Lookup: INBOUND, REVERSED                                                    | fixed IDs 1–2                                                                                                                                                                                                                                  |
+| `transactions`             | `Transaction`           | Append-only money ledger                                                     | `payment_id`, `session_line_item_id`, `transaction_type_id`, `amount`, `clinic_user_id` (who recorded it)                                                                                                                                      |
+| `invoices`                 | `Invoice`               | A statement for one patient                                                  | unique (`clinic_id`, `number`); `issued_at`, `notes`                                                                                                                                                                                           |
+| `invoice_items`            | `InvoiceItem`           | Session line items on an invoice                                             | `invoice_id`; `session_line_item_id` is **unique**                                                                                                                                                                                             |
+| `clinic_payout_settings`   | `ClinicPayoutSetting`   | How a clinic splits what it bills with its staff                             | one per clinic (`clinic_id` is unique), created on demand; `worker_share_percentage` (default 60), `include_pending_payments` (default true), `require_attendance` (default false)                                                             |
+| `clinic_schedule_settings` | `ClinicScheduleSetting` | When the clinic is open                                                      | one per clinic (`clinic_id` is unique), created on demand; `weekday_opens_at`/`weekday_closes_at` (08:00–17:00), `weekend_opens_at`/`weekend_closes_at` (09:00–12:00), `saturday_enabled`, `sunday_enabled`, `allow_outside_hours` (all false) |
+| `attendances`              | `Attendance`            | One member's working day                                                     | unique (`clinic_user_id`, `work_date`); `work_date` is a date in the clinic's timezone; `attendance_status_id`, `checked_in_at`, `checked_out_at`, `notes`, `recorded_by_clinic_user_id`                                                       |
+| `discounts`                | `Discount`              | Money taken off a billed item                                                | `clinic_user_id` null = clinic-wide, set = that member's own; `name`, `discount_type_id`, `discount_target_id`, `value` decimal(12,2), `is_active`; soft-deleted                                                                               |
+| `payouts`                  | `Payout`                | What a clinic owes one member for a period                                   | unique (`clinic_id`, `number`, shown as `PAY-000001`); `period_start`/`period_end`, `payout_status_id`, `share_percentage`, `gross_amount`, `discount_total`, `worker_amount`, `clinic_amount`, `pending_amount`, `paid_at`                    |
+| `payout_items`             | `PayoutItem`            | One billed item on a payout, with its split frozen                           | `payout_id`; `session_line_item_id` is **unique**; `share_percentage`, `gross_amount`, `discount_amount`, `worker_amount`, `clinic_amount`, `was_pending`, `settled_at`                                                                        |
+| `clinic_invitations`       | `ClinicInvitation`      | An email invited to join a clinic                                            | `email`, `clinic_role_id` (Clinic Worker), `token_hash` (SHA-256, unique), `invited_by_user_id`, `expires_at` (7 days), `accepted_at`, `accepted_by_user_id`, `revoked_at`                                                                     |
+| `patient_form_fields`      | `PatientFormField`      | One input on a clinic's patient form                                         | unique (`clinic_id`, `key`) **including removed rows**; `label`, `patient_form_field_type_id`, `options`, `validation`, `is_required`, `section`, `position`; `patient_column` set = built-in; soft-deleted                                    |
+| `patient_field_values`     | `PatientFieldValue`     | One patient's answer to one custom field                                     | unique (`patient_id`, `patient_form_field_id`); `value` is text (a MULTISELECT answer is a JSON array); the field is restricted, not cascaded, so archiving one keeps its answers                                                              |
+| `patient_progress_notes`   | `PatientProgressNote`   | How a patient is doing on one day                                            | `patient_id`, `clinic_user_id` (the author), `clinic_session_id?`, `recorded_on` (a date in the clinic's timezone), `progress_rating_id`, `summary`, `body`, `plan`; soft-deleted                                                              |
+| `patient_progress_metrics` | `PatientProgressMetric` | A measurement on a progress note                                             | unique (`patient_progress_note_id`, `name`); `value` decimal(10,2), `unit` (e.g. `/10`, `deg`, `kg`)                                                                                                                                           |
+| `patient_form_invitations` | `PatientFormInvitation` | A link letting a patient fill the form in themselves                         | `patient_id?` (set = update that record), `name`, `email`, `token_hash` (SHA-256, unique), `created_by_clinic_user_id`, `expires_at` (14 days), `submitted_at`, `revoked_at`                                                                   |
+| `calendar_filters`         | `CalendarFilter`        | A schedule filter a member saved for themselves                              | `clinic_id`, `clinic_user_id`, `name`, `rules` (JSON: `match` + `conditions`)                                                                                                                                                                  |
+| `activity_logs`            | `ActivityLog`           | Append-only audit trail of every change ([activity-log.md](activity-log.md)) | `clinic_id` (null = platform), `user_id`, `action`, subject, `changes`, `ip_address`; pruned after `ACTIVITY_RETENTION_DAYS`                                                                                                                   |
+
+`clinic_session_members` gained `moved_to_clinic_session_member_id`,
+`moved_at` and `moved_reason`: where a patient went when they missed a day,
+when it was arranged and why. The row on the missed day stays, so the day
+still records that the patient was expected.
 
 Two existing tables gained columns with these modules.
 `clinic_users.payout_share_percentage` is one member's own cut of what they
@@ -204,6 +211,38 @@ The first draft of the tables had these inconsistencies. This is how each was re
   billed items and payment are removed with them. Paid or refunded patients
   stay (the transactions refer to them).
 
+**Opening hours**
+
+- The clinic's `timezone` is the clock everything is read in: opening hours,
+  session times, daily-session windows, `occurs_on`, attendance `work_date`
+  and payout periods. Every screen shows clinic time, the calendar
+  included. A Clinic Admin sets it on the Schedule settings page (it used
+  to be reachable only by a super admin in the internal tool, which is how
+  a clinic could end up stuck on the wrong one).
+- **Changing the timezone does not move anything already booked.** Sessions
+  keep the instant they were booked for, so they read at a different clock
+  time afterwards, and any that fall outside the new opening hours drop off
+  the calendar grid until they are moved. Re-plan each daily session after
+  changing it.
+- A clinic has one window for weekdays and another for the weekend, with
+  Saturday and Sunday switched on **independently**: opening on a Saturday
+  but not a Sunday is the common case, and the reverse happens too. A clinic
+  starts on 08:00–17:00 Monday to Friday, closed at the weekend.
+- The hours decide what the calendar grid spans and what the time pickers
+  offer, and sessions outside them are refused (422). `allow_outside_hours`
+  turns that enforcement off for clinics that need the freedom; the calendar
+  then shows an hour of slack either side.
+- A daily session's window must fit the hours of every weekday it runs on,
+  and it cannot run on a weekend day the clinic does not open.
+- **Only when the time is being set.** A session already outside the hours
+  can still be renamed, cancelled or paid; it just cannot be _moved_ to
+  another time outside them. Otherwise tightening the hours would strand
+  every session already booked.
+- Changing the hours never moves a session that already exists, including
+  the days of a daily session. Edit the daily session to re-plan those.
+- Clinics that existed before the hours did were given
+  `allow_outside_hours` on, so nothing they had booked became unbookable.
+
 **Daily sessions**
 
 - A staff member holds at most one daily session (`daily_sessions.clinic_user_id`
@@ -268,6 +307,31 @@ The first draft of the tables had these inconsistencies. This is how each was re
 - A day cannot be edited or deleted as a regular session; cancel it instead.
   Deleting a daily session is only possible while nobody has paid for any
   of its days; otherwise set `ends_on`.
+
+**Makeup sessions**
+
+- A patient who misses a day can be moved to a **makeup** on another date,
+  usually later the same week. It is arranged per patient, not for the whole
+  day.
+- The makeup is a **session of its own** (`daily_session_id` null), not
+  another place on an existing day. A patient can be on a day only once
+  (`clinic_session_members` is unique on the session and the patient), and
+  the date they move to is usually one the daily session already runs, where
+  they are already enrolled.
+- **What they owe moves with them.** The billed items and the payment are
+  reassigned rather than copied, so nobody is billed twice and a patient who
+  already paid keeps their payment. The missed day keeps its row, with
+  `moved_to_clinic_session_member_id` pointing at where they went, and the
+  slot they held is freed.
+- Can be arranged **before, during or after** the day: a last-minute
+  cancellation and a no-show both end up here. This is the one exception to
+  "once a day is DONE its patients can no longer be changed".
+- The makeup is held by the same member unless another of the same clinic is
+  named. The time must be free for whoever holds it, and inside the opening
+  hours.
+- Refused when the day was cancelled, when the patient already has a makeup
+  for it, when the session is not a day of a daily session, or when what the
+  patient owes is already on an invoice.
 
 **Invitations**
 

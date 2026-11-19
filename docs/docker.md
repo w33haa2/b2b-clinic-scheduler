@@ -382,32 +382,47 @@ docker compose exec -e DB_CONNECTION=pgsql -e DB_HOST=pg -e DB_PORT=5432 \
   `SUPER_ADMIN_PASSWORD` (and optionally `SUPER_ADMIN_NAME`), and the account
   is created by whichever of these happens first:
 
-  1. the entrypoint, which runs `clinic:create-super-admin --if-missing` when
-     `RUN_MIGRATIONS=true`; or
-  2. the **first visit to the landing page**, handled by
-     `App\Actions\Auth\ProvisionInitialAdmin`.
+    1. the entrypoint, which runs `clinic:create-super-admin --if-missing` when
+       `RUN_MIGRATIONS=true`; or
+    2. the **first visit to the landing page**, handled by
+       `App\Actions\Auth\ProvisionInitialAdmin`.
 
-  The second exists for hosts where the deploy log is the only thing you can
-  see and the entrypoint's attempt is easy to miss. Both stop as soon as one
-  super admin exists, so they cannot produce two accounts, and a lock means
-  simultaneous first visits cannot either. Change the password from
-  Settings → Security afterwards and remove the variables. On a host with
-  shell access, run the command by hand and leave the variables unset.
+    The second exists for hosts where the deploy log is the only thing you can
+    see and the entrypoint's attempt is easy to miss. Both stop as soon as one
+    super admin exists, so they cannot produce two accounts, and a lock means
+    simultaneous first visits cannot either. Change the password from
+    Settings → Security afterwards and remove the variables. On a host with
+    shell access, run the command by hand and leave the variables unset.
 
-  Two things that make this look broken when it is not:
+    Two things that make this look broken when it is not:
 
-  - **It will not replace an existing super admin.** If *any* super admin
-     exists the account you configured is skipped, and the deploy log names
-     both: `A super admin already exists (someone@example.com)` followed by
-     `you@example.com was NOT created`.
-  - **`SUPER_ADMIN_PASSWORD` must satisfy the production policy**, which
-     `AppServiceProvider` sets to 12+ characters with mixed case, numbers,
-     symbols, and not present in a known breach. A password that fails is
-     reported to the log — never to the visitor — and retried at most once
-     every five minutes, so a misconfigured deployment cannot turn its own
-     home page into an outbound request amplifier.
+    - **It will not replace an existing super admin.** If _any_ super admin
+      exists the account you configured is skipped, and the deploy log names
+      both: `A super admin already exists (someone@example.com)` followed by
+      `you@example.com was NOT created`.
+    - **`SUPER_ADMIN_PASSWORD` must satisfy the production policy**, which
+      `AppServiceProvider` sets to 12+ characters with mixed case, numbers,
+      symbols, and not present in a known breach. A password that fails is
+      reported to the log — never to the visitor — and retried at most once
+      every five minutes, so a misconfigured deployment cannot turn its own
+      home page into an outbound request amplifier.
 
 ### Mail through Gmail SMTP
+
+> **SMTP does not work on a Free instance.** Render blocks outbound traffic on
+> ports 25, 465 and 587 for Free web services, and on port 25 for every
+> service. Gmail offers nothing else, so on a Free plan every send ends in
+> `Connection timed out` no matter how the credentials are set. The two ways
+> out are to move the service to any paid compute plan, or to use a provider
+> with an HTTPS API, which is not port-blocked. Note that the _service's_
+> compute plan is what matters here; upgrading the workspace plan does not
+> lift it. See <https://render.com/docs/free>.
+>
+> Two other Free-plan limits bite this app specifically: a Free service
+> **spins down after 15 minutes without inbound traffic**, which stops the
+> queue worker and the scheduler with it, and Render may suspend a Free
+> service that generates a lot of outbound traffic — which includes every
+> query to an external database such as Neon.
 
 This app sends exactly two kinds of mail — password resets and clinic
 invitations — and **both go through the queue**. That shapes everything about
@@ -426,17 +441,17 @@ Two consequences worth internalising:
 
 The settings:
 
-| Variable | Value |
-| --- | --- |
-| `MAIL_MAILER` | `smtp` |
-| `MAIL_HOST` | `smtp.gmail.com` |
-| `MAIL_PORT` | `465` |
-| `MAIL_SCHEME` | `smtps` |
-| `MAIL_TIMEOUT` | `15` |
-| `MAIL_USERNAME` | the full Gmail address |
-| `MAIL_PASSWORD` | a 16-character **App Password** |
+| Variable            | Value                               |
+| ------------------- | ----------------------------------- |
+| `MAIL_MAILER`       | `smtp`                              |
+| `MAIL_HOST`         | `smtp.gmail.com`                    |
+| `MAIL_PORT`         | `465`                               |
+| `MAIL_SCHEME`       | `smtps`                             |
+| `MAIL_TIMEOUT`      | `15`                                |
+| `MAIL_USERNAME`     | the full Gmail address              |
+| `MAIL_PASSWORD`     | a 16-character **App Password**     |
 | `MAIL_FROM_ADDRESS` | the same address as `MAIL_USERNAME` |
-| `MAIL_FROM_NAME` | `Clinic App` |
+| `MAIL_FROM_NAME`    | `Clinic App`                        |
 
 The parts that bite:
 
@@ -461,7 +476,7 @@ The parts that bite:
 **`MAIL_TIMEOUT` has to stay below the queue worker's timeout** (60s by
 default). Laravel ships `'timeout' => null` for SMTP, which leaves Symfony on
 PHP's `default_socket_timeout` of 60s -- exactly the worker's own limit. On a
-network that *drops* SMTP rather than refusing it, the two race and the worker
+network that _drops_ SMTP rather than refusing it, the two race and the worker
 loses:
 
 ```
@@ -484,12 +499,12 @@ TransportException: Connection could not be established with host
 
 That message is the diagnosis:
 
-| Message in the worker log | What it means |
-| --- | --- |
-| `Connection timed out` | The port is blocked or the host is wrong. Try `MAIL_PORT=587` with `MAIL_SCHEME=smtp`; if that also times out, outbound SMTP is blocked and you need a provider with an HTTPS API instead. |
-| `Connection refused` | Nothing is listening. Wrong port. |
-| `Expected response code 235 but got code 535` | The credentials are wrong -- almost always the account password instead of an App Password. |
-| `UnsupportedSchemeException` | `MAIL_SCHEME` is something other than `smtp` or `smtps`. |
+| Message in the worker log                     | What it means                                                                                                                                                           |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Connection timed out`                        | Nothing answered the SYN. On Render this usually means the compute plan, not the config — see below. Otherwise the host is wrong or a firewall is dropping the traffic. |
+| `Connection refused`                          | Nothing is listening. Wrong port.                                                                                                                                       |
+| `Expected response code 235 but got code 535` | The credentials are wrong -- almost always the account password instead of an App Password.                                                                             |
+| `UnsupportedSchemeException`                  | `MAIL_SCHEME` is something other than `smtp` or `smtps`.                                                                                                                |
 
 To check it works without a shell, use the password-reset flow: open
 `/admin/forgot-password`, enter a real address, and watch the inbox. If

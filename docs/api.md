@@ -75,8 +75,8 @@ Roles store permissions in `clinic_role_permission`. Built-in roles:
 
 Default Clinic Worker permissions (defined in `App\Enums\ClinicRoleKey`):
 patients index/show/store/update; sessions index/show/store/update and
-status.update; session members index/store/destroy, payment.update and
-slot.update; session line items index/store/update/destroy; daily sessions
+status.update; session members index/store/destroy, payment.update,
+slot.update and reschedule.store; session line items index/store/update/destroy; daily sessions
 index/show/store/update and patients store/update/destroy; payments index/show and
 prepay.store; line-items index/show; members index/show; attendance
 index/store/update; discounts index/show/store/update/destroy; payouts
@@ -140,6 +140,8 @@ them; the API only stores them.
 | PUT       | `/api/clinics/{clinic}`                                       | `clinic.update`                                                |
 | GET       | `/api/clinics/{clinic}/payout-settings`                       | `clinic.payout-settings.show`                                  |
 | PUT       | `/api/clinics/{clinic}/payout-settings`                       | `clinic.payout-settings.update`                                |
+| GET       | `/api/clinics/{clinic}/schedule-settings`                     | `clinic.schedule-settings.show`                                |
+| PUT       | `/api/clinics/{clinic}/schedule-settings`                     | `clinic.schedule-settings.update`                              |
 | GET       | `/api/clinics/{clinic}/receivables`                           | `clinic.receivables.index`                                     |
 | POST      | `/api/clinics/{clinic}/members`                               | `clinic.members.store`                                         |
 | PUT/PATCH | `/api/clinics/{clinic}/members/{clinicUser}`                  | `clinic.members.update` (replace roles)                        |
@@ -162,6 +164,21 @@ default again. Changing any of it never moves a payout that already exists.
 `SETTLED` or `ALL`), `clinic_user_id`, `patient_id` and the payout period
 (`from` / `to`), and adds `meta.summary` (advanced, settled, outstanding)
 and `meta.by_member`.
+
+`PUT /schedule-settings` sets when the clinic is open: one window for
+weekdays (`weekday_opens_at` / `weekday_closes_at`), one for the weekend
+(`weekend_opens_at` / `weekend_closes_at`), `saturday_enabled` and
+`sunday_enabled` **independently**, and `allow_outside_hours`. The response
+also returns `opens_at` / `closes_at` (the widest of the two windows, which
+is what the calendar grid spans) and `open_weekdays`.
+
+Sessions booked outside the hours are refused with a 422 on `starts_at`
+unless `allow_outside_hours` is on, and a daily session cannot run on a day
+the clinic does not open. The check applies **only when the time is being
+set**, so a session already outside the hours can still be renamed or
+cancelled. Changing the hours never moves anything already booked. Clinics
+that predate the setting were given `allow_outside_hours` on, so nothing
+they had booked became unbookable.
 
 ### Clinic API: permission-guarded
 
@@ -211,6 +228,7 @@ The route name in the last column is also the permission name.
 |                  | `DELETE /sessions/{clinicSession}/members/{sessionMember}`                                                                                                                                                                  | `clinic.sessions.members.destroy`                      |
 |                  | `PUT /sessions/{clinicSession}/members/{sessionMember}/payment` `{"payment_status":"DONE"}`                                                                                                                                 | `clinic.sessions.members.payment.update`               |
 |                  | `PUT /sessions/{clinicSession}/members/{sessionMember}/slot`: this day only. `{"starts_at","ends_at"}` (null to unplot), `{"line_item_id","unit_price"?}` (today's service), or `{"reset":true}` (back to the regular plan) | `clinic.sessions.members.slot.update`                  |
+|                  | `POST /sessions/{clinicSession}/members/{sessionMember}/reschedule` `{"starts_at","ends_at","clinic_user_id"?,"reason"?}`: move a patient who misses a day to a makeup session on another date                              | `clinic.sessions.members.reschedule.store`             |
 | Daily sessions   | `GET /daily-sessions?active=&search=`, `POST /daily-sessions` (`patients: [{patient_id, line_item_id?, unit_price?, start_time?, duration_minutes?}]`, or `patient_ids`)                                                    | `clinic.daily-sessions.{index,store}`                  |
 |                  | `GET /daily-sessions/{dailySession}` (with `meta.upcoming_days`)                                                                                                                                                            | `clinic.daily-sessions.show`                           |
 |                  | One per staff member: a second `POST` for the same `clinic_user_id` is a 422. `PUT` with `patients` (the full list) syncs the enrolments in one transaction                                                                 |                                                        |
@@ -353,6 +371,10 @@ Daily sessions:
 3. Change someone's regular plan with `PUT /daily-sessions/{d}/patients/{p}`.
 4. Pay per day as in step 5 above, or in advance with `POST /payments/prepay`.
 5. Past-due days show with `GET /payments?status=PAST_DUE`.
+6. A patient who misses a day gets a makeup with
+   `POST /sessions/{day}/members/{sessionMember}/reschedule`. What they owe
+   moves to the new session, so a patient who prepaid keeps their payment
+   and nobody is billed twice.
 
 Paying staff:
 

@@ -7,6 +7,7 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/ui-review
 /resources/js/actions
 /resources/js/routes
 /resources/js/wayfinder

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useClinic } from '@/composables/useClinic';
 import {
     Select,
     SelectContent,
@@ -16,12 +17,16 @@ import DatePicker from './DatePicker.vue';
  */
 type Props = {
     id?: string;
-    /** First and last selectable hour of the day. */
+    /**
+     * First and last selectable hour of the day. Both default to the
+     * clinic's opening hours, so the list is as long as the clinic's day
+     * rather than running from midnight to late evening.
+     */
     startHour?: number;
     endHour?: number;
 };
 
-const props = withDefaults(defineProps<Props>(), { startHour: 6, endHour: 22 });
+const props = defineProps<Props>();
 const model = defineModel<string>({ default: '' });
 
 const date = computed({
@@ -37,11 +42,26 @@ const time = computed({
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
+// Outside a clinic page there is no context to read, so the component keeps
+// working on its own with a plain working day.
+const clinicHours = (() => {
+    try {
+        return useClinic().openHours;
+    } catch {
+        return computed(() => ({ start: 8, end: 17 }));
+    }
+})();
+
+const startHour = computed(() => props.startHour ?? clinicHours.value.start);
+const endHour = computed(() =>
+    Math.max(startHour.value, props.endHour ?? clinicHours.value.end - 1),
+);
+
 /** 15-minute slots, plus the current value if it is off the grid (e.g. 09:10). */
 const times = computed(() => {
     const slots: string[] = [];
 
-    for (let hour = props.startHour; hour <= props.endHour; hour++) {
+    for (let hour = startHour.value; hour <= endHour.value; hour++) {
         for (const minute of [0, 15, 30, 45]) {
             slots.push(`${pad(hour)}:${pad(minute)}`);
         }

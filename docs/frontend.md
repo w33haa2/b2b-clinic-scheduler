@@ -26,9 +26,9 @@ resources/js/
 │   │   └── PatientForm.vue The patient intake link (no sign-in)
 │   └── admin/
 │       ├── Dashboard.vue   Clinic picker
-│       ├── clinic/         Schedule, Patients, ProgressNotes, PatientForm, Services, Discounts,
-│       │                   Payments, Invoices, Transactions, Attendance, Payouts, Receivables,
-│       │                   PayoutSettings, Members, Roles, Activity
+│       ├── clinic/         Schedule, ScheduleSettings, Patients, ProgressNotes, PatientForm,
+│       │                   Services, Discounts, Payments, Invoices, Transactions, Attendance,
+│       │                   Payouts, Receivables, PayoutSettings, Members, Roles, Activity
 │       ├── internal/       Clinics, ClinicShow, SuperAdmins
 │       ├── auth/           Login, ForgotPassword, ResetPassword, ConfirmPassword, Invitation
 │       └── settings/       Profile, Security, Appearance
@@ -37,7 +37,7 @@ resources/js/
 │   ├── ui/                 shadcn-vue components (generated; do not hand-edit)
 │   ├── schedule/           SessionCalendar (FullCalendar), SessionFormDialog, SessionSheet,
 │   │                       DailySessionWizard, DailySessionSheet, DayTimeline, PlotSlotPopover,
-│   │                       ScheduleFilterPanel, CalendarFilterDialog
+│   │                       ScheduleFilterPanel, CalendarFilterDialog, RescheduleDialog
 │   ├── clinic/             Patient, service (line item), invoice and prepay dialogs, plus
 │   │                       DiscountFormDialog, AttendanceFormDialog, PayoutGenerateDialog,
 │   │                       PayoutSheet
@@ -128,11 +128,13 @@ so opening a page you may not use returns 403.
 `AppSidebar.vue` changes with the context:
 
 - **Inside a clinic:** a clinic switcher, then Schedule (a collapsible group:
-  Calendar and Daily sessions), Patients (Records, Progress notes, Patient
+  Calendar, Daily sessions and, for a Clinic Admin, Schedule settings),
+  Patients (Records, Progress notes, Patient
   form), Services & pricing, Discounts, Payments, Invoices, Transactions,
   Attendance, Payouts (Payout runs, Receivables, Payout settings), Staff,
   Roles & permissions, Activity log. Each item
-  shows only if the member has its permission; Receivables and Payout settings
+  shows only if the member has its permission; Schedule settings,
+  Receivables and Payout settings
   only show for a Clinic Admin, so a worker gets a single "Payouts" link
   rather than a group. `NavMain` renders an item with
   `items` as a collapsible group (open while one of its pages is current). The order matches
@@ -151,6 +153,31 @@ the daygrid, timegrid, list and interaction plugins).
 
 - **Views:** day, week, month and agenda, switched from shadcn `Tabs`;
   FullCalendar's own toolbar is off.
+- **It draws the clinic's clock, not the viewer's.** A session at 09:30 in a
+  UTC clinic reads 09:30 for everyone, the same as the day planner and the
+  daily-session pages. FullCalendar only knows `local` and `UTC` without a
+  timezone plugin, so `SessionCalendar` feeds it wall-clock strings already
+  converted to clinic time (`toCalendarTime`) and sets `timeZone: 'UTC'`,
+  which stops it shifting anything; `now` is overridden with the clinic's
+  wall time so the now-line is right too. Everything crossing back out —
+  drags, selections, the visible range — goes through `fromCalendarTime`,
+  so callers only ever see real instants and never deal with this. Dates
+  read straight off `arg.event` in the event slot are clinic wall-clock
+  held as UTC, so format them with `timeZone: 'UTC'`.
+  Before this, the calendar was the one screen rendering in browser time: a
+  09:30 UTC slot showed as 5:30pm to a viewer in UTC+8 while every other
+  screen said 9:30.
+- **The grid spans the clinic's opening hours**, not a fixed working day: a
+  clinic that opens at 07:00 sees 07:00, and one that closes at 15:00 is not
+  scrolling past empty evening rows. Days the clinic does not open are
+  greyed with FullCalendar's `businessHours`, so an empty Sunday reads as
+  "closed" rather than "nothing booked". A clinic that allows booking
+  outside its hours gets an hour of slack either side, because that is
+  where those bookings land. The hours come from `useClinic().openHours`,
+  shared on every clinic page as `clinicContext.clinic.schedule`, so the
+  first paint is already correct. `DateTimePicker` and the daily-session
+  wizard read the same thing, which is why their time lists are as long as
+  the clinic's day rather than running to late evening.
 - **Events** are the sessions in the visible range (`GET /sessions?from&to`, all
   pages). Event IDs say what they are: `session-{id}`, `daily-{id}` or
   `slot-{sessionMemberId}`. A one-off session shows the title (session name,
@@ -164,6 +191,18 @@ the daygrid, timegrid, list and interaction plugins).
   (`PUT …/members/{m}/slot`); clicking one opens `DailySessionSheet` for
   that day (see below). The event IDs are `session-{id}` and
   `slot-{sessionMemberId}`.
+- **Dragging a plotted patient onto another day arranges a makeup.** Within
+  their own day a drag just moves the slot (`PUT …/slot`). Across days that
+  is impossible — a slot has to sit inside its day's hours, so it used to
+  fail with "the slot must be inside the daily session's hours" and nothing
+  else — and dragging a patient to another day plainly means "see them
+  then instead". The block springs back and `RescheduleDialog` opens
+  pre-filled with where it was dropped, listing what the holder already has
+  that day so the slot can be placed around it. That list is computed from
+  the sessions the calendar already loaded for the visible range, so it
+  costs no extra request. A clash with the patient's **own** slot (the
+  normal case, since a makeup usually lands on a day they already attend)
+  says so rather than claiming someone else is in the way.
 - **New session** in the side panel books a one-off session
   (`SessionFormDialog`). Daily sessions are created and updated on their own
   page (linked under the button).
@@ -209,8 +248,16 @@ calendar stays in the browser's timezone.
 - **`DayPlanner`** plots one day: "To plot" cards beside the timeline (drag,
   or click then click a time, or `PlotSlotPopover`), "Fill free time" places
   everyone waiting, and clicking a patient opens a card to change today's
-  service, go back to the regular plan, record a payment or refund, or take
-  them off today. All of it is for that day only (`customised`). On the current day it
+  service, go back to the regular plan, record a payment or refund, move
+  them to a makeup session, or take
+  them off today. All of it is for that day only (`customised`).
+  **"Move to makeup"** (`RescheduleDialog`) is for a patient who misses the
+  day: it suggests the same slot the next day, keeps the length as the date
+  moves, and optionally hands the makeup to another staff member. What the
+  patient owes moves with them, so it is also the right action when they
+  have already paid. It stays available whatever the day's status, because
+  a makeup is usually arranged after the patient failed to turn up; the
+  patient's card then shows "Moved to a makeup" instead. On the current day it
   draws a now line, "Fill free time" only uses the time still ahead, and a
   patient can be added for today only. When updating a daily session, the
   wizard's step 3 has a "Today only" tab with the same planner for
@@ -587,6 +634,16 @@ attendance says the member worked it. A worked example beside the share shows
 what a bill of 1,000 leaves each side. The whole page is saved in one
 request, and nothing on it changes a payout that already exists.
 
+**Schedule settings** (`pages/admin/clinic/ScheduleSettings.vue`, Clinic
+Admin only) is where the opening hours are set: one window for weekdays,
+another for the weekend, with Saturday and Sunday switched on
+independently, and a checkbox allowing bookings outside them. Each card
+reads back the length of the day it describes ("9 hours a day"), the
+weekend hours only appear once a weekend day is on, and turning overruns on
+shows a warning that nothing will be refused for falling outside the hours.
+Saved in one request; the page keeps a draft and offers Discard while it
+differs from what was saved.
+
 **Receivables** (`pages/admin/clinic/Receivables.vue`, Clinic Admin only) is
 the money the clinic paid out before it collected it: one row per billed item
 that went into a payout while the patient's payment was still pending. Rows
@@ -661,7 +718,8 @@ See [activity-log.md](activity-log.md).
    names only, and `routes/admin.php` registers each one with the
    `clinic.admin` middleware rather than a permission, so those pages are
    never grantable permissions and no role can open them — only a Clinic
-   Admin can. Receivables and Payout settings are the two there today.
+   Admin can. Receivables, Payout settings and Schedule settings are the
+   three there today.
 3. Create `pages/admin/clinic/<Name>.vue`: call `useClinic()`,
    `setLayoutProps({ breadcrumbs })`, load data with `useApiQuery`, and hide
    actions with `can()`.

@@ -29,6 +29,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $starts_at
  * @property Carbon|null $ends_at
  * @property bool $customised
+ * @property int|null $moved_to_clinic_session_member_id
+ * @property Carbon|null $moved_at
+ * @property string|null $moved_reason
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -49,6 +52,7 @@ class ClinicSessionMember extends Model
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
             'customised' => 'boolean',
+            'moved_at' => 'datetime',
         ];
     }
 
@@ -84,6 +88,35 @@ class ClinicSessionMember extends Model
     public function payment(): HasOne
     {
         return $this->hasOne(Payment::class);
+    }
+
+    /**
+     * Where this patient went when they missed the day: their place in the
+     * makeup session their bill and payment moved to.
+     *
+     * @return BelongsTo<ClinicSessionMember, $this>
+     */
+    public function movedTo(): BelongsTo
+    {
+        return $this->belongsTo(ClinicSessionMember::class, 'moved_to_clinic_session_member_id');
+    }
+
+    /**
+     * The missed day this one is the makeup for.
+     *
+     * @return HasOne<ClinicSessionMember, $this>
+     */
+    public function movedFrom(): HasOne
+    {
+        return $this->hasOne(ClinicSessionMember::class, 'moved_to_clinic_session_member_id');
+    }
+
+    /**
+     * Whether the patient was moved off this day to a makeup session.
+     */
+    public function wasMoved(): bool
+    {
+        return $this->moved_to_clinic_session_member_id !== null;
     }
 
     /**

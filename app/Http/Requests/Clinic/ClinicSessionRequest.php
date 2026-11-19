@@ -73,6 +73,16 @@ class ClinicSessionRequest extends FormRequest
                 if ($isDoubleBooked) {
                     $validator->errors()->add('clinic_user_id', __('This member already has a session at that time.'));
                 }
+
+                // Only when the time is actually being set. Otherwise a
+                // session booked before the hours existed, or while they
+                // allowed more, could not even be renamed or cancelled
+                // without being moved first.
+                $movingTime = $this->has('starts_at') || $this->has('ends_at');
+
+                if ($movingTime && ! $this->clinic()->scheduleSettings()->covers($startsAt, $endsAt)) {
+                    $validator->errors()->add('starts_at', __('The clinic is closed then. Change the time, or allow booking outside opening hours in the schedule settings.'));
+                }
             },
         ];
     }

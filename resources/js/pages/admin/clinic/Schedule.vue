@@ -24,6 +24,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import CalendarFilterDialog from '@/components/schedule/CalendarFilterDialog.vue';
 import DailySessionBadge from '@/components/schedule/DailySessionBadge.vue';
 import DailySessionSheet from '@/components/schedule/DailySessionSheet.vue';
+import RescheduleDialog from '@/components/schedule/RescheduleDialog.vue';
 import ScheduleFilterPanel from '@/components/schedule/ScheduleFilterPanel.vue';
 import SessionFormDialog from '@/components/schedule/SessionFormDialog.vue';
 import SessionSheet from '@/components/schedule/SessionSheet.vue';
@@ -40,6 +41,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useClinic } from '@/composables/useClinic';
 import { useInitials } from '@/composables/useInitials';
 import { api, ApiError, fetchAllPages } from '@/lib/api';
+import { clinicParts } from '@/lib/clinicTime';
 import { formatTime, patientName } from '@/lib/format';
 import { memberColorIndex, memberColorVar } from '@/lib/memberColors';
 import {
@@ -70,7 +72,8 @@ const SessionCalendar = defineAsyncComponent(
     () => import('@/components/schedule/SessionCalendar.vue'),
 );
 
-const { clinicId, can } = useClinic();
+const { clinicId, can, context } = useClinic();
+const timezone = computed(() => context.value.clinic.timezone);
 const { getInitials } = useInitials();
 const scheduleStore = useScheduleStore();
 const { view, focusDate, quickFilters, savedFilterId } =
@@ -351,6 +354,46 @@ function onSaved(session: ClinicSession): void {
     }
 }
 
+/*
+ * A patient dragged onto another day, waiting to be turned into a makeup.
+ * The dialog shows what the holder already has on that date so the slot can
+ * be placed sensibly, which is the part a bare date field cannot tell you.
+ */
+const makeup = ref<{
+    day: ClinicSession;
+    member: SessionMember;
+    start: string;
+    end: string;
+} | null>(null);
+
+function offerMakeup(
+    day: ClinicSession,
+    sessionMemberId: number,
+    start: Date,
+    end: Date,
+): void {
+    const member = day.members?.find(
+        (candidate) => candidate.id === sessionMemberId,
+    );
+
+    if (!member) {
+        return;
+    }
+
+    if (!can('clinic.sessions.members.reschedule.store')) {
+        toast.error('You cannot arrange makeup sessions.');
+
+        return;
+    }
+
+    makeup.value = {
+        day,
+        member,
+        start: start.toISOString(),
+        end: end.toISOString(),
+    };
+}
+
 async function onMove(change: {
     eventId: string;
     start: Date;
@@ -379,6 +422,25 @@ async function onMove(change: {
 
             if (!session) {
                 change.revert();
+
+                return;
+            }
+
+            /*
+             * Dropped on another date. A plotted patient can only be moved
+             * within their own day (the slot has to sit inside that day's
+             * hours), so dragging across days used to fail with "the slot
+             * must be inside the daily session's hours" and nothing else.
+             * Dragging a patient to another day plainly means "see them
+             * then instead", which is a makeup, so offer that.
+             */
+            const dayDate = clinicParts(session.starts_at, timezone.value).date;
+            const dropDate = clinicParts(change.start, timezone.value).date;
+
+            if (dayDate !== dropDate) {
+                // Put the block back: it only moves once the makeup is saved.
+                change.revert();
+                offerMakeup(session, id, change.start, change.end);
 
                 return;
             }
@@ -550,13 +612,20 @@ function eventMinutes(arg: EventContentArg): number {
     return start && end ? (end.getTime() - start.getTime()) / 60000 : 60;
 }
 
-/** Start time only, for blocks too short for the full range ("9:30am"). */
+/**
+ * Start time only, for blocks too short for the full range ("9:30am").
+ *
+ * Read as UTC on purpose: the calendar runs on clinic wall-clock times that
+ * FullCalendar is told are UTC, so the UTC parts of this date are already
+ * the clinic's clock. Formatting it in the browser's zone would shift it.
+ */
 function eventStart(arg: EventContentArg): string {
     return arg.event.start
         ? arg.event.start
               .toLocaleTimeString(undefined, {
                   hour: 'numeric',
                   minute: '2-digit',
+                  timeZone: 'UTC',
               })
               .replace(':00', '')
               .replace(' ', '')
@@ -681,7 +750,8 @@ function eventTooltip(arg: EventContentArg): string {
                     badge. Click one to plot or rearrange that day.
                 </p>
                 <p v-if="can('clinic.sessions.members.slot.update')">
-                    Drag a plotted patient to move their slot.
+                    Drag a plotted patient to move their slot. Drag them onto
+                    another day to arrange a makeup instead.
                 </p>
             </div>
         </aside>
@@ -957,6 +1027,20 @@ function eventTooltip(arg: EventContentArg): string {
         :session-id="dailySheetSessionId"
         :catalog="catalog"
         @changed="loadSessions"
+    />
+    <RescheduleDialog
+        v-if="makeup"
+        :open="true"
+        :session-member="makeup.member"
+        :day="makeup.day"
+        :initial-start="makeup.start"
+        :initial-end="makeup.end"
+        :sessions="sessions"
+        @update:open="(value) => !value && (makeup = null)"
+        @moved="
+            makeup = null;
+            void loadSessions();
+        "
     />
     <CalendarFilterDialog
         v-model:open="filterDialogOpen"

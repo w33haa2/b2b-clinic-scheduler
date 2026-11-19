@@ -8,6 +8,7 @@ use App\Models\LineItem;
 use App\Support\DailyPlanSlots;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -100,6 +101,10 @@ class DailySessionRequest extends FormRequest
                     $validator->errors()->add('ends_on', __('The end date cannot be before the start date.'));
                 }
 
+                if ($startTime !== null && $endTime !== null && $endTime > $startTime) {
+                    $this->checkOpeningHours($validator, $startTime, $endTime);
+                }
+
                 if ($startTime === null || $endTime === null || $validator->errors()->has('patients.*')) {
                     return;
                 }
@@ -121,6 +126,47 @@ class DailySessionRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    /**
+     * The daily window has to fit the clinic's opening hours on every weekday
+     * the session runs, and it cannot run on a weekend day the clinic does
+     * not open. A clinic that allows booking outside its hours skips both.
+     */
+    private function checkOpeningHours(Validator $validator, string $startTime, string $endTime): void
+    {
+        $hours = $this->clinic()->scheduleSettings();
+
+        if ($hours->allow_outside_hours) {
+            return;
+        }
+
+        $dailySession = $this->dailySession();
+        $weekdays = $this->has('weekdays')
+            ? (array) $this->input('weekdays')
+            : ($dailySession === null ? [] : $dailySession->weekdays);
+
+        foreach ($weekdays as $weekday) {
+            $open = $hours->hoursForWeekday((int) $weekday);
+
+            if ($open === null) {
+                $validator->errors()->add('weekdays', __('The clinic does not open on :day. Enable it in the schedule settings first.', [
+                    'day' => Date::now()->isoWeekday((int) $weekday)->format('l'),
+                ]));
+
+                continue;
+            }
+
+            if ($startTime < substr($open[0], 0, 5) || $endTime > substr($open[1], 0, 5)) {
+                $validator->errors()->add('start_time', __('The daily window must be inside the clinic\'s opening hours (:from-:to on :day).', [
+                    'from' => substr($open[0], 0, 5),
+                    'to' => substr($open[1], 0, 5),
+                    'day' => Date::now()->isoWeekday((int) $weekday)->format('l'),
+                ]));
+
+                return;
+            }
+        }
     }
 
     /**

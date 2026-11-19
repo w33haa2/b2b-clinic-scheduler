@@ -271,6 +271,15 @@ export type SessionMember = {
     ends_at: string | null;
     /** Changed by hand for this day only; regular plan changes skip it. */
     customised: boolean;
+    /**
+     * Set when the patient missed this day and was given a makeup on another
+     * date. Their bill and payment moved with them.
+     */
+    moved_to?: {
+        session_member_id: number;
+        moved_at: string | null;
+        reason: string | null;
+    };
     line_items?: SessionLineItem[];
 };
 

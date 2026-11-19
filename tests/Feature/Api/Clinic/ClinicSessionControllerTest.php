@@ -12,21 +12,23 @@ test('a session is created with its patients and stored in UTC', function () {
     $patients = Patient::factory()->count(2)->for($worker->clinic)->create();
     Sanctum::actingAs($worker->user);
 
+    // Sent with an offset, so the stored value proves the conversion. The
+    // clinic runs on UTC and opens 08:00-17:00, which the result sits inside.
     $this->postJson(route('clinic.sessions.store', $worker->clinic_id), [
         'name' => 'Group therapy',
-        'starts_at' => '2030-01-01T09:00:00+08:00',
-        'ends_at' => '2030-01-01T10:00:00+08:00',
+        'starts_at' => '2030-01-01T17:00:00+08:00',
+        'ends_at' => '2030-01-01T18:00:00+08:00',
         'clinic_user_id' => $worker->id,
         'patient_ids' => $patients->pluck('id')->all(),
     ])->assertCreated()
         ->assertJsonPath('data.status', 'PENDING')
-        ->assertJsonPath('data.starts_at', '2030-01-01T01:00:00.000000Z')
+        ->assertJsonPath('data.starts_at', '2030-01-01T09:00:00.000000Z')
         ->assertJsonCount(2, 'data.members');
 
     $this->assertDatabaseHas('clinic_sessions', [
         'clinic_id' => $worker->clinic_id,
         'clinic_user_id' => $worker->id,
-        'starts_at' => '2030-01-01 01:00:00',
+        'starts_at' => '2030-01-01 09:00:00',
         'status_id' => SessionStatus::Pending->value,
     ]);
 });

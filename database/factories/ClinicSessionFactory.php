@@ -19,7 +19,18 @@ class ClinicSessionFactory extends Factory
      */
     public function definition(): array
     {
+        /*
+         * A weekday inside the opening hours a clinic starts with
+         * (08:00-17:00, closed at the weekend). A fixture landing on a
+         * Saturday would be refused by the booking rules on roughly two
+         * runs in seven, which is the kind of flake that wastes an
+         * afternoon.
+         */
         $startsAt = now()->addDays(fake()->numberBetween(1, 30))->setTime(fake()->numberBetween(8, 16), 0);
+
+        while ($startsAt->isWeekend()) {
+            $startsAt = $startsAt->addDay();
+        }
 
         return [
             'clinic_user_id' => ClinicUser::factory()->worker(),

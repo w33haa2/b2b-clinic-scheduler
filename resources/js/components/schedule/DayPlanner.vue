@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+    CalendarClock,
     CheckCircle2,
     CircleSlash,
     Clock,
@@ -25,6 +26,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import PatientPicker from '@/components/PatientPicker.vue';
 import type { TimelineBlock } from '@/components/schedule/DayTimeline.vue';
 import PlotSlotPopover from '@/components/schedule/PlotSlotPopover.vue';
+import RescheduleDialog from '@/components/schedule/RescheduleDialog.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,6 +104,7 @@ const busy = ref<string | null>(null);
 const search = ref('');
 const selectedMemberId = ref<number | null>(null);
 const refundTarget = ref<SessionMember | null>(null);
+const rescheduleTarget = ref<SessionMember | null>(null);
 
 const toPlotList = useTemplateRef<HTMLElement>('toPlotList');
 
@@ -841,12 +844,51 @@ defineExpose({ reload: load });
                     <UserMinus />
                     Not coming today
                 </Button>
+                <!--
+                    Available whatever the day's status: a patient cancels at
+                    the last minute as often as they simply do not turn up,
+                    and the makeup is usually arranged afterwards.
+                -->
+                <Button
+                    v-if="
+                        !selectedMember.moved_to &&
+                        day.status !== 'CANCELLED' &&
+                        can('clinic.sessions.members.reschedule.store')
+                    "
+                    size="sm"
+                    variant="outline"
+                    :disabled="busy !== null"
+                    @click="rescheduleTarget = selectedMember"
+                >
+                    <CalendarClock />
+                    Move to makeup
+                </Button>
+                <span
+                    v-else-if="selectedMember.moved_to"
+                    class="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800 dark:bg-sky-500/15 dark:text-sky-300"
+                >
+                    Moved to a makeup
+                </span>
             </div>
         </div>
     </div>
 
+    <RescheduleDialog
+        v-if="day"
+        :open="rescheduleTarget !== null"
+        :session-member="rescheduleTarget"
+        :day="day"
+        @update:open="(value) => !value && (rescheduleTarget = null)"
+        @moved="
+            rescheduleTarget = null;
+            selectedMemberId = null;
+            void load();
+            emit('changed');
+        "
+    />
     <ConfirmDialog
         v-model:open="cancelOpen"
+        ,
         :title="isToday ? 'Cancel today?' : 'Cancel this day?'"
         :description="`No one is seen on ${day ? formatClinicDate(day.starts_at, timezone) : 'this day'} and its unpaid bills no longer count. Days with paid patients must be refunded first. This cannot be undone.`"
         confirm-label="Cancel the day"

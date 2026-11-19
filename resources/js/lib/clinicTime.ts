@@ -57,6 +57,41 @@ export function fromClinicTime(
     return new Date(instant).toISOString();
 }
 
+/*
+ * FullCalendar only understands "local" and "UTC" without a timezone plugin,
+ * so the calendar is fed wall-clock strings already in clinic time and told
+ * they are UTC. It then does no shifting of its own and draws exactly the
+ * clinic's clock. These two convert across that boundary.
+ */
+
+/** An instant → "2026-11-14T09:30:00", the clinic's wall clock. */
+export function toCalendarTime(
+    instant: string | Date,
+    timeZone: string,
+): string {
+    const { date, time } = clinicParts(instant, timeZone);
+
+    return `${date}T${time}:00`;
+}
+
+/**
+ * A date out of FullCalendar (whose UTC parts are the clinic's wall clock)
+ * back to the real instant it stands for.
+ */
+export function fromCalendarTime(value: Date, timeZone: string): Date {
+    const date = [
+        value.getUTCFullYear(),
+        String(value.getUTCMonth() + 1).padStart(2, '0'),
+        String(value.getUTCDate()).padStart(2, '0'),
+    ].join('-');
+    const time = [
+        String(value.getUTCHours()).padStart(2, '0'),
+        String(value.getUTCMinutes()).padStart(2, '0'),
+    ].join(':');
+
+    return new Date(fromClinicTime(date, time, timeZone));
+}
+
 /** "9:30 AM" in the clinic's timezone. */
 export function formatClinicTime(instant: string, timeZone: string): string {
     return new Date(instant).toLocaleTimeString(undefined, {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Resources\ClinicScheduleSettingResource;
 use App\Models\Clinic;
 use App\Support\ClinicContext;
 use Illuminate\Http\Request;
@@ -45,7 +46,7 @@ class HandleInertiaRequests extends Middleware
                 'clinics' => fn () => $request->user()?->clinics()->orderBy('name')->get(['clinics.id', 'clinics.name'])
                     ->map(fn (Clinic $clinic): array => ['id' => $clinic->id, 'name' => $clinic->name]) ?? [],
             ],
-            'clinicContext' => fn () => $this->clinicContext(),
+            'clinicContext' => fn () => $this->clinicContext($request),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }
@@ -54,9 +55,13 @@ class HandleInertiaRequests extends Middleware
      * The clinic the current page belongs to, with the member's access. Null
      * outside the clinic area. Resolved lazily, after EnsureClinicMember ran.
      *
-     * @return array{clinic: array{id: int, name: string, timezone: string}, member: array{id: int, is_admin: bool, permissions: list<string>}}|null
+     * Opening hours ride along: the calendar grid, the time pickers and the
+     * daily-session wizard all need them on first paint, and fetching them
+     * per page would show a midnight-to-midnight grid until the call landed.
+     *
+     * @return array{clinic: array{id: int, name: string, timezone: string, schedule: array<string, mixed>}, member: array{id: int, is_admin: bool, permissions: list<string>}}|null
      */
-    protected function clinicContext(): ?array
+    protected function clinicContext(Request $request): ?array
     {
         $member = app(ClinicContext::class)->memberOrNull();
 
@@ -69,6 +74,7 @@ class HandleInertiaRequests extends Middleware
                 'id' => $member->clinic->id,
                 'name' => $member->clinic->name,
                 'timezone' => $member->clinic->timezone,
+                'schedule' => (new ClinicScheduleSettingResource($member->clinic->scheduleSettings()))->toArray($request),
             ],
             'member' => [
                 'id' => $member->id,
